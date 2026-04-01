@@ -17,6 +17,7 @@
         #input_video { 
             display: none; 
         }
+        
         /* UI Layer - Bloquea la interacción hasta dar clic */
         #ui-layer {
             position: absolute;
@@ -32,6 +33,7 @@
             color: #FDCC0D; /* SGX Yellow */
             z-index: 20;
             backdrop-filter: blur(5px);
+            transition: opacity 0.5s ease;
         }
         .start-box {
             background: rgba(50, 82, 123, 0.9); /* SGX Blue */
@@ -42,7 +44,7 @@
             box-shadow: 0 0 20px rgba(253, 204, 13, 0.4);
             max-width: 400px;
         }
-        button {
+        button.sgx-btn {
             background: #FDCC0D;
             color: #000;
             border: none;
@@ -54,7 +56,7 @@
             margin-top: 20px;
             transition: all 0.2s ease;
         }
-        button:hover {
+        button.sgx-btn:hover {
             background: #fff;
             box-shadow: 0 0 15px #FDCC0D;
         }
@@ -68,6 +70,24 @@
             pointer-events: none;
             z-index: 10;
         }
+
+        /* Lil-GUI SGX Custom Theme Override */
+        .lil-gui { 
+            --background-color: rgba(17, 17, 17, 0.9);
+            --text-color: #FDCC0D;
+            --title-background-color: #32527B;
+            --widget-color: #333;
+            --hover-color: #444;
+            --focus-color: #FDCC0D;
+            --number-color: #fff;
+            --string-color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            z-index: 15;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: none; /* Hidden until started */
+        }
     </style>
     <!-- Three.js Base -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -75,6 +95,8 @@
     <!-- MediaPipe FaceMesh -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    <!-- Lil-GUI para Controles Interactivos -->
+    <script src="https://cdn.jsdelivr.net/npm/lil-gui@0.19"></script>
 </head>
 <body>
 
@@ -88,7 +110,7 @@
             <p style="color: #fff; font-size: 0.9rem;">
                 Esta experiencia requiere tracking facial para crear la ilusión de profundidad (Parallax 3D).
             </p>
-            <button id="start-btn">INICIAR SENSOR ÓPTICO</button>
+            <button id="start-btn" class="sgx-btn">INICIAR SENSOR ÓPTICO</button>
             <p id="loading-msg" style="display: none; color: #fff; margin-top: 15px; font-size: 0.8rem;">
                 Cargando Asset y Motor IA...
             </p>
@@ -99,13 +121,43 @@
 
     <script>
         // ==========================================
+        // 0. CONTROLADOR DE ESTADO GLOBAL (CONFIG)
+        // ==========================================
+        const SGXConfig = {
+            // Parallax Engine
+            tipoParallax: 'Portal (Físico)', // Control Maestro de Dirección
+            depthMultiplierX: 3.5,
+            depthMultiplierY: 2.5,
+            lerpFactor: 0.12,
+            invertX: true,  // Corrección nativa de cámara X
+            invertY: true,  // Corrección nativa de cámara Y
+            
+            // Spatial Boundary (Box)
+            boxWidth: 10,
+            boxHeight: 8,
+            boxDepth: 8,
+            
+            // Environment & Camera
+            cameraZ: 8,
+            gridColor: 0xFDCC0D,
+            gridBg: 0x32527B,
+            lightIntensity: 0.8,
+
+            // Acciones
+            resetView: function() {
+                targetX = 0; targetY = 0;
+                currentX = 0; currentY = 0;
+            }
+        };
+
+        // ==========================================
         // 1. ARQUITECTURA THREE.JS
         // ==========================================
         const container = document.getElementById('scene-container');
         const scene = new THREE.Scene();
 
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 8;
+        camera.position.z = SGXConfig.cameraZ;
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -114,48 +166,74 @@
         container.appendChild(renderer.domElement);
 
         // Iluminación
-        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, SGXConfig.lightIntensity);
         hemiLight.position.set(0, 20, 0);
         scene.add(hemiLight);
 
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        const dirLight = new THREE.DirectionalLight(0xffffff, SGXConfig.lightIntensity);
         dirLight.position.set(5, 10, 5);
         scene.add(dirLight);
 
         // ==========================================
-        // 2. LA CAJA DE CONTENCIÓN (BOUNDARY BOX)
+        // 2. LA CAJA DE CONTENCIÓN (BOUNDARY BOX) DINÁMICA
         // ==========================================
-        // VARIABLES MAESTRAS (Modifícalas aquí)
-        const boxWidth = 10;
-        const boxHeight = 8;
-        const boxDepth = 8;
+        let room, gridFloor, gridCeil;
 
-        const roomGeo = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
-        const roomMat = new THREE.MeshStandardMaterial({
-            color: 0x111111,
-            side: THREE.BackSide, // Renderiza el interior
-            roughness: 0.8,
-            metalness: 0.2
-        });
-        const room = new THREE.Mesh(roomGeo, roomMat);
-        scene.add(room);
+        function buildEncasedRoom() {
+            // Limpiar geometrías previas si existen (Evita Memory Leaks)
+            if (room) {
+                room.geometry.dispose();
+                scene.remove(room);
+            }
+            if (gridFloor) {
+                scene.remove(gridFloor);
+            }
+            if (gridCeil) {
+                scene.remove(gridCeil);
+            }
 
-        // Rejilla base (Floor Grid) para forzar las líneas de perspectiva espacial
-        const gridFloor = new THREE.GridHelper(boxWidth, 20, 0xFDCC0D, 0x32527B);
-        gridFloor.position.y = -boxHeight / 2 + 0.01; // Ligeramente arriba del piso para evitar Z-fighting
-        scene.add(gridFloor);
+            // Crear Habitación
+            const roomGeo = new THREE.BoxGeometry(SGXConfig.boxWidth, SGXConfig.boxHeight, SGXConfig.boxDepth);
+            const roomMat = new THREE.MeshStandardMaterial({
+                color: 0x111111,
+                side: THREE.BackSide,
+                roughness: 0.8,
+                metalness: 0.2
+            });
+            room = new THREE.Mesh(roomGeo, roomMat);
+            scene.add(room);
 
-        // Rejilla de techo
-        const gridCeil = new THREE.GridHelper(boxWidth, 20, 0xFDCC0D, 0x32527B);
-        gridCeil.position.y = boxHeight / 2 - 0.01;
-        gridCeil.rotation.x = Math.PI;
-        scene.add(gridCeil);
+            // Rejilla base (Floor Grid)
+            gridFloor = new THREE.GridHelper(SGXConfig.boxWidth, Math.floor(SGXConfig.boxWidth * 2), SGXConfig.gridColor, SGXConfig.gridBg);
+            gridFloor.position.y = -SGXConfig.boxHeight / 2 + 0.01; 
+            scene.add(gridFloor);
+
+            // Rejilla de techo
+            gridCeil = new THREE.GridHelper(SGXConfig.boxWidth, Math.floor(SGXConfig.boxWidth * 2), SGXConfig.gridColor, SGXConfig.gridBg);
+            gridCeil.position.y = SGXConfig.boxHeight / 2 - 0.01;
+            gridCeil.rotation.x = Math.PI;
+            scene.add(gridCeil);
+
+            // Re-escalar modelo principal si ya está cargado
+            scaleMainObject();
+        }
+
+        buildEncasedRoom();
 
         // ==========================================
         // 3. CARGA DEL MODELO 3D (Asset)
         // ==========================================
         const modelUrl = 'https://static.wixstatic.com/3d/fe81a7_8d5fdc7130e14daa8e101d7569c59b37.glb';
         let mainObject;
+        let originalModelSize = new THREE.Vector3();
+
+        function scaleMainObject() {
+            if (!mainObject) return;
+            const maxDim = Math.max(originalModelSize.x, originalModelSize.y, originalModelSize.z);
+            // Escala para que ocupe siempre el 60% de la altura de la caja actual
+            const scale = (SGXConfig.boxHeight * 0.6) / maxDim; 
+            mainObject.scale.set(scale, scale, scale);
+        }
 
         const loader = new THREE.GLTFLoader();
         loader.load(
@@ -166,15 +244,11 @@
                 // Auto-centrado
                 const box = new THREE.Box3().setFromObject(mainObject);
                 const center = box.getCenter(new THREE.Vector3());
-                const size = box.getSize(new THREE.Vector3());
+                box.getSize(originalModelSize);
                 
                 mainObject.position.sub(center); // Centrar en (0,0,0)
+                scaleMainObject(); // Escalar según la caja
                 
-                // Escalar basado en la caja para que no se salga
-                const maxDim = Math.max(size.x, size.y, size.z);
-                const scale = (boxHeight * 0.6) / maxDim; // Ocupa el 60% de la altura de la caja
-                mainObject.scale.set(scale, scale, scale);
-
                 scene.add(mainObject);
             }
         );
@@ -186,18 +260,48 @@
         let targetY = 0;
         let currentX = 0;
         let currentY = 0;
-        
-        // LIMITADORES DE CÁMARA (Para no salirnos de la caja)
-        const depthMultiplierX = 3.5; 
-        const depthMultiplierY = 2.5; 
-        const lerpFactor = 0.12; 
 
         function lerp(start, end, amt) {
             return (1 - amt) * start + amt * end;
         }
 
         // ==========================================
-        // 5. INICIALIZACIÓN IA Y UI (PERMISOS)
+        // 5. SISTEMA DE UI INTERACTIVO (LIL-GUI)
+        // ==========================================
+        function initGUI() {
+            const gui = new lil.GUI({ title: '⚙️ SGX Control Panel' });
+            document.querySelector('.lil-gui').style.display = 'block';
+
+            // Carpeta: Sensor y Parallax
+            const folderParallax = gui.addFolder('👁️ Parallax Engine');
+            folderParallax.add(SGXConfig, 'tipoParallax', ['Portal (Físico)', 'Espejo (Sigue Mirada)']).name('Modo de Interacción');
+            folderParallax.add(SGXConfig, 'depthMultiplierX', 0, 10).name('Amplitud X');
+            folderParallax.add(SGXConfig, 'depthMultiplierY', 0, 10).name('Amplitud Y');
+            folderParallax.add(SGXConfig, 'lerpFactor', 0.01, 0.5).name('Fricción (Lerp)');
+            folderParallax.add(SGXConfig, 'invertX').name('Invertir Eje X Base');
+            folderParallax.add(SGXConfig, 'invertY').name('Invertir Eje Y Base');
+            folderParallax.add(SGXConfig, 'resetView').name('Resetear Vista');
+
+            // Carpeta: Geometría de la Caja
+            const folderBox = gui.addFolder('📐 Spatial Boundary');
+            folderBox.add(SGXConfig, 'boxWidth', 2, 30).name('Ancho (X)').onChange(buildEncasedRoom);
+            folderBox.add(SGXConfig, 'boxHeight', 2, 20).name('Altura (Y)').onChange(buildEncasedRoom);
+            folderBox.add(SGXConfig, 'boxDepth', 2, 30).name('Profundidad (Z)').onChange(buildEncasedRoom);
+
+            // Carpeta: Entorno
+            const folderEnv = gui.addFolder('💡 Environment');
+            folderEnv.add(SGXConfig, 'cameraZ', 2, 20).name('Distancia Cámara').onChange(v => camera.position.z = v);
+            folderEnv.add(SGXConfig, 'lightIntensity', 0, 3).name('Luz Global').onChange(v => {
+                hemiLight.intensity = v;
+                dirLight.intensity = v;
+            });
+
+            // Cerrar algunas carpetas por defecto para no saturar
+            folderEnv.close();
+        }
+
+        // ==========================================
+        // 6. INICIALIZACIÓN IA Y MEDIA (PERMISOS)
         // ==========================================
         const videoElement = document.getElementById('input_video');
         const startBtn = document.getElementById('start-btn');
@@ -207,7 +311,6 @@
 
         let cameraUtilsInstance = null;
 
-        // Configuración MediaPipe
         const faceMesh = new FaceMesh({locateFile: (file) => {
             return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
         }});
@@ -220,24 +323,31 @@
         });
 
         faceMesh.onResults((results) => {
-            // Quitar UI cuando detecta el primer frame válido
+            // Quitar UI de carga cuando detecta el primer frame válido
             if (uiLayer.style.display !== 'none') {
-                uiLayer.style.display = 'none';
+                uiLayer.style.opacity = '0';
+                setTimeout(() => { uiLayer.style.display = 'none'; }, 500);
                 hudData.style.display = 'block';
+                initGUI(); // Iniciar panel de control al tener tracking exitoso
             }
 
             if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
                 const nose = results.multiFaceLandmarks[0][1];
                 
-                // Normalización
-                targetX = (nose.x - 0.5) * -2 * depthMultiplierX; 
-                targetY = -(nose.y - 0.5) * 2 * depthMultiplierY; 
+                // Normalización con aplicadores paramétricos base
+                let dirX = SGXConfig.invertX ? -1 : 1;
+                let dirY = SGXConfig.invertY ? -1 : 1;
+
+                // Aplicador del Modo de Interacción
+                let modeMultiplier = SGXConfig.tipoParallax === 'Portal (Físico)' ? 1 : -1;
+
+                targetX = (nose.x - 0.5) * 2 * SGXConfig.depthMultiplierX * dirX * modeMultiplier; 
+                targetY = (nose.y - 0.5) * 2 * SGXConfig.depthMultiplierY * dirY * modeMultiplier; 
 
                 hudData.innerText = `TARGET X: ${targetX.toFixed(2)} | TARGET Y: ${targetY.toFixed(2)}`;
             }
         });
 
-        // Trigger manual de hardware
         startBtn.addEventListener('click', () => {
             startBtn.style.display = 'none';
             loadingMsg.style.display = 'block';
@@ -251,20 +361,20 @@
             });
 
             cameraUtilsInstance.start().catch(err => {
-                loadingMsg.innerText = "Error: Acceso a cámara denegado. Revisa tus permisos.";
+                loadingMsg.innerText = "Error: Acceso a cámara denegado. Revisa tus permisos de navegador.";
                 loadingMsg.style.color = "red";
             });
         });
 
         // ==========================================
-        // 6. RENDER LOOP
+        // 7. RENDER LOOP
         // ==========================================
         function animate() {
             requestAnimationFrame(animate);
 
-            // Filtro LERP
-            currentX = lerp(currentX, targetX, lerpFactor);
-            currentY = lerp(currentY, targetY, lerpFactor);
+            // Filtro LERP dinámico
+            currentX = lerp(currentX, targetX, SGXConfig.lerpFactor);
+            currentY = lerp(currentY, targetY, SGXConfig.lerpFactor);
 
             // Aplicar traslación a la cámara
             camera.position.x = currentX;
@@ -279,7 +389,7 @@
         animate();
 
         // ==========================================
-        // 7. RESPONSIVIDAD
+        // 8. RESPONSIVIDAD
         // ==========================================
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
