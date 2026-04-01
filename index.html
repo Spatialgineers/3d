@@ -350,22 +350,36 @@
             }
         });
 
-        startBtn.addEventListener('click', () => {
+        startBtn.addEventListener('click', async () => {
             startBtn.style.display = 'none';
             loadingMsg.style.display = 'block';
+            loadingMsg.innerText = "Inicializando IA y descargando pesos neurales...";
 
-            cameraUtilsInstance = new Camera(videoElement, {
-                onFrame: async () => {
-                    await faceMesh.send({image: videoElement});
-                },
-                width: 640,
-                height: 480
-            });
+            try {
+                // 1. Forzar inicialización de MediaPipe ANTES de enviar frames (Mata el Race Condition)
+                await faceMesh.initialize();
+                
+                loadingMsg.innerText = "Encendiendo sensor óptico...";
 
-            cameraUtilsInstance.start().catch(err => {
-                loadingMsg.innerText = "Error: Acceso a cámara denegado. Revisa tus permisos de navegador.";
+                // 2. Encender cámara solo cuando la IA esté lista
+                cameraUtilsInstance = new Camera(videoElement, {
+                    onFrame: async () => {
+                        try {
+                            await faceMesh.send({image: videoElement});
+                        } catch (e) {
+                            console.error("Frame drop (Normal en inicialización):", e);
+                        }
+                    },
+                    width: 640,
+                    height: 480
+                });
+
+                await cameraUtilsInstance.start();
+            } catch (err) {
+                loadingMsg.innerText = "Error crítico: Acceso a cámara denegado o fallo de CDN. Revisa permisos.";
                 loadingMsg.style.color = "red";
-            });
+                console.error(err);
+            }
         });
 
         // ==========================================
