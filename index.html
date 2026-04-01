@@ -125,12 +125,11 @@
         // ==========================================
         const SGXConfig = {
             // Parallax Engine
-            tipoParallax: 'Portal (Físico)', // Control Maestro de Dirección
             depthMultiplierX: 3.5,
             depthMultiplierY: 2.5,
             lerpFactor: 0.12,
-            invertX: true,  // Corrección nativa de cámara X
-            invertY: true,  // Corrección nativa de cámara Y
+            invertX: true,
+            invertY: true,
             
             // Spatial Boundary (Box)
             boxWidth: 10,
@@ -274,12 +273,11 @@
 
             // Carpeta: Sensor y Parallax
             const folderParallax = gui.addFolder('👁️ Parallax Engine');
-            folderParallax.add(SGXConfig, 'tipoParallax', ['Portal (Físico)', 'Espejo (Sigue Mirada)']).name('Modo de Interacción');
             folderParallax.add(SGXConfig, 'depthMultiplierX', 0, 10).name('Amplitud X');
             folderParallax.add(SGXConfig, 'depthMultiplierY', 0, 10).name('Amplitud Y');
             folderParallax.add(SGXConfig, 'lerpFactor', 0.01, 0.5).name('Fricción (Lerp)');
-            folderParallax.add(SGXConfig, 'invertX').name('Invertir Eje X Base');
-            folderParallax.add(SGXConfig, 'invertY').name('Invertir Eje Y Base');
+            folderParallax.add(SGXConfig, 'invertX').name('Invertir Eje X');
+            folderParallax.add(SGXConfig, 'invertY').name('Invertir Eje Y');
             folderParallax.add(SGXConfig, 'resetView').name('Resetear Vista');
 
             // Carpeta: Geometría de la Caja
@@ -334,15 +332,12 @@
             if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
                 const nose = results.multiFaceLandmarks[0][1];
                 
-                // Normalización con aplicadores paramétricos base
+                // Normalización con aplicadores paramétricos del GUI
                 let dirX = SGXConfig.invertX ? -1 : 1;
                 let dirY = SGXConfig.invertY ? -1 : 1;
 
-                // Aplicador del Modo de Interacción
-                let modeMultiplier = SGXConfig.tipoParallax === 'Portal (Físico)' ? 1 : -1;
-
-                targetX = (nose.x - 0.5) * 2 * SGXConfig.depthMultiplierX * dirX * modeMultiplier; 
-                targetY = (nose.y - 0.5) * 2 * SGXConfig.depthMultiplierY * dirY * modeMultiplier; 
+                targetX = (nose.x - 0.5) * 2 * SGXConfig.depthMultiplierX * dirX; 
+                targetY = (nose.y - 0.5) * 2 * SGXConfig.depthMultiplierY * dirY; 
 
                 hudData.innerText = `TARGET X: ${targetX.toFixed(2)} | TARGET Y: ${targetY.toFixed(2)}`;
             }
