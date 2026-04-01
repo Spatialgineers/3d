@@ -173,6 +173,7 @@
         import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
         import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
         import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
         import GUI from 'lil-gui';
 
         const SGX = {
@@ -220,6 +221,14 @@
         const spot = new THREE.PointLight(0xFDCC0D, 2, 40);
         spot.position.set(0, 0, 5);
         scene.add(spot);
+
+        // --- NUEVO: ENTORNO HDRI PARA REFLEJOS METÁLICOS ---
+        // Esto le dará vida a los metales, vidrios y materiales PBR sin alterar tu caja gris
+        new RGBELoader().load('https://cdn.jsdelivr.net/npm/three@0.147.0/examples/textures/equirectangular/royal_esplanade_1k.hdr', (texture) => {
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+            scene.environment = texture; // Aplica los reflejos globales
+            console.log("Entorno HDRI cargado exitosamente.");
+        });
 
         // --- CONSTRUCCIÓN DEL ENTORNO (LA CAJA GRIS) ---
         let roomGroup = new THREE.Group();
