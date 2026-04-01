@@ -13,12 +13,17 @@
         }
         canvas { 
             display: block; 
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
         }
-        #input_video { 
+        #video_feed { 
             display: none; 
+            /* El video se mantiene oculto, solo sirve para inyectarle datos a la IA */
         }
         
-        /* UI Layer - Ahora es una viñeta transparente para que VEAS el 3D atrás */
+        /* UI Layer - Viñeta transparente para ver el 3D operando detrás */
         #ui-layer {
             position: absolute;
             top: 0;
@@ -29,35 +34,44 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            background: radial-gradient(circle, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.8) 100%);
+            background: radial-gradient(circle, rgba(5,5,5,0.4) 0%, rgba(5,5,5,0.9) 100%);
             color: #FDCC0D; /* SGX Yellow */
             z-index: 20;
             transition: opacity 0.5s ease;
+            backdrop-filter: blur(2px);
         }
         .start-box {
-            background: rgba(50, 82, 123, 0.9); /* SGX Blue */
+            background: rgba(50, 82, 123, 0.85); /* SGX Blue */
             border: 2px solid #FDCC0D;
-            padding: 30px;
+            padding: 40px;
             text-align: center;
-            border-radius: 4px;
-            box-shadow: 0 0 20px rgba(253, 204, 13, 0.4);
-            max-width: 400px;
+            border-radius: 8px;
+            box-shadow: 0 0 30px rgba(253, 204, 13, 0.3);
+            max-width: 450px;
         }
         button.sgx-btn {
             background: #FDCC0D;
             color: #000;
             border: none;
             padding: 15px 30px;
-            font-size: 1.1rem;
+            font-size: 1.2rem;
             font-weight: bold;
             font-family: 'Courier New', Courier, monospace;
             cursor: pointer;
             margin-top: 20px;
             transition: all 0.2s ease;
+            text-transform: uppercase;
         }
         button.sgx-btn:hover {
             background: #fff;
-            box-shadow: 0 0 15px #FDCC0D;
+            box-shadow: 0 0 20px #FDCC0D;
+            transform: scale(1.05);
+        }
+        #system-log {
+            color: #fff;
+            margin-top: 20px;
+            font-size: 0.85rem;
+            min-height: 20px;
         }
         #hud-data {
             position: absolute;
@@ -68,11 +82,12 @@
             text-transform: uppercase;
             pointer-events: none;
             z-index: 10;
+            display: none;
         }
 
-        /* Lil-GUI SGX Custom Theme Override */
+        /* Lil-GUI SGX Custom Theme */
         .lil-gui { 
-            --background-color: rgba(17, 17, 17, 0.9);
+            --background-color: rgba(17, 17, 17, 0.95);
             --text-color: #FDCC0D;
             --title-background-color: #32527B;
             --widget-color: #333;
@@ -88,67 +103,78 @@
             display: none;
         }
     </style>
-    <!-- Three.js Base -->
+
+    <!-- 1. Librerías Base -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <!-- MediaPipe FaceMesh (Solo la red neuronal, eliminamos el camera_utils problemático) -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
-    <!-- Lil-GUI para Controles Interactivos -->
     <script src="https://cdn.jsdelivr.net/npm/lil-gui@0.19"></script>
 </head>
 <body>
 
-    <video id="input_video" autoplay playsinline muted></video>
+    <!-- Atributos críticos para WebRTC: autoplay, playsinline, muted -->
+    <video id="video_feed" autoplay playsinline muted></video>
     
     <div id="scene-container"></div>
 
     <div id="ui-layer">
         <div class="start-box">
-            <h2>SGX SPATIAL PORTAL</h2>
-            <p style="color: #fff; font-size: 0.9rem;">
-                Esta experiencia requiere tracking facial para crear la ilusión de profundidad (Parallax 3D).
+            <h2 style="margin-top:0;">SGX SPATIAL PORTAL</h2>
+            <p style="color: #ddd; font-size: 0.95rem; line-height: 1.4;">
+                Validador Arquitectónico de Parallax.<br>
+                Requiere acceso a la cámara para cálculo de profundidad espacial.
             </p>
-            <button id="start-btn" class="sgx-btn">INICIAR SENSOR ÓPTICO</button>
-            <p id="loading-msg" style="display: none; color: #fff; margin-top: 15px; font-size: 0.8rem;">
-                Conectando hardware...
-            </p>
+            <button id="start-btn" class="sgx-btn">Iniciar Motor Óptico</button>
+            <div id="system-log">SISTEMA EN ESPERA...</div>
         </div>
     </div>
     
-    <div id="hud-data" style="display: none;">TARGET X: 0.00 | TARGET Y: 0.00</div>
+    <div id="hud-data">X: 0.00 | Y: 0.00 | LERP: ACTIVO</div>
 
     <script>
         // ==========================================
-        // 0. CONTROLADOR DE ESTADO GLOBAL (CONFIG)
+        // 0. CONFIGURACIÓN MAESTRA SGX (ESTADO GLOBAL)
         // ==========================================
-        const SGXConfig = {
-            tipoParallax: 'Portal (Físico)',
-            depthMultiplierX: 3.5,
-            depthMultiplierY: 2.5,
-            lerpFactor: 0.12,
-            invertX: true, 
-            invertY: true, 
-            boxWidth: 10,
-            boxHeight: 8,
-            boxDepth: 8,
-            cameraZ: 8,
-            gridColor: 0xFDCC0D,
-            gridBg: 0x32527B,
-            lightIntensity: 0.8,
-            resetView: function() {
-                targetX = 0; targetY = 0;
-                currentX = 0; currentY = 0;
+        const SGX = {
+            // Variables Matemáticas del Parallax
+            targetX: 0,
+            targetY: 0,
+            currentX: 0,
+            currentY: 0,
+
+            // Parámetros Expuestos al UI
+            config: {
+                modo: 'Portal (Efecto Vitrina)', // vs 'Espejo (Sigue Mirada)'
+                amplitudX: 4.5,
+                amplitudY: 3.0,
+                friccion: 0.1,    // Factor Lerp
+                invertirX: false, // Corección de cámara
+                invertirY: false,
+                
+                // Entorno
+                boxW: 12,
+                boxH: 8,
+                boxD: 8,
+                camZ: 9,
+                
+                // Botón de reset
+                recalibrar: function() {
+                    SGX.targetX = 0; SGX.targetY = 0;
+                    SGX.currentX = 0; SGX.currentY = 0;
+                }
             }
         };
 
+        const logger = document.getElementById('system-log');
+
         // ==========================================
-        // 1. ARQUITECTURA THREE.JS
+        // 1. MOTOR GRÁFICO (THREE.JS CORE)
         // ==========================================
         const container = document.getElementById('scene-container');
         const scene = new THREE.Scene();
 
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = SGXConfig.cameraZ;
+        camera.position.z = SGX.config.camZ;
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -156,137 +182,149 @@
         renderer.outputEncoding = THREE.sRGBEncoding;
         container.appendChild(renderer.domElement);
 
-        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, SGXConfig.lightIntensity);
+        // Iluminación
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.9);
         hemiLight.position.set(0, 20, 0);
         scene.add(hemiLight);
 
-        const dirLight = new THREE.DirectionalLight(0xffffff, SGXConfig.lightIntensity);
-        dirLight.position.set(5, 10, 5);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(5, 10, 7);
         scene.add(dirLight);
 
         // ==========================================
-        // 2. LA CAJA DE CONTENCIÓN (BOUNDARY BOX) DINÁMICA
+        // 2. CONSTRUCCIÓN DE LA VITRINA (BOUNDARY BOX)
         // ==========================================
         let room, gridFloor, gridCeil;
 
-        function buildEncasedRoom() {
-            if (room) {
-                room.geometry.dispose();
-                scene.remove(room);
-            }
+        function buildSpatialBox() {
+            // Destrucción limpia para evitar memory leaks
+            if (room) { room.geometry.dispose(); room.material.dispose(); scene.remove(room); }
             if (gridFloor) scene.remove(gridFloor);
             if (gridCeil) scene.remove(gridCeil);
 
-            const roomGeo = new THREE.BoxGeometry(SGXConfig.boxWidth, SGXConfig.boxHeight, SGXConfig.boxDepth);
+            // Construir paredes
+            const roomGeo = new THREE.BoxGeometry(SGX.config.boxW, SGX.config.boxH, SGX.config.boxD);
             const roomMat = new THREE.MeshStandardMaterial({
-                color: 0x111111,
+                color: 0x151515,
                 side: THREE.BackSide,
-                roughness: 0.8,
-                metalness: 0.2
+                roughness: 0.7,
+                metalness: 0.3
             });
             room = new THREE.Mesh(roomGeo, roomMat);
             scene.add(room);
 
-            gridFloor = new THREE.GridHelper(SGXConfig.boxWidth, Math.floor(SGXConfig.boxWidth * 2), SGXConfig.gridColor, SGXConfig.gridBg);
-            gridFloor.position.y = -SGXConfig.boxHeight / 2 + 0.01; 
+            // Construir rejillas de perspectiva (Amarillo y Azul SGX)
+            gridFloor = new THREE.GridHelper(SGX.config.boxW, Math.floor(SGX.config.boxW * 2), 0xFDCC0D, 0x32527B);
+            gridFloor.position.y = -SGX.config.boxH / 2 + 0.01; 
             scene.add(gridFloor);
 
-            gridCeil = new THREE.GridHelper(SGXConfig.boxWidth, Math.floor(SGXConfig.boxWidth * 2), SGXConfig.gridColor, SGXConfig.gridBg);
-            gridCeil.position.y = SGXConfig.boxHeight / 2 - 0.01;
+            gridCeil = new THREE.GridHelper(SGX.config.boxW, Math.floor(SGX.config.boxW * 2), 0xFDCC0D, 0x32527B);
+            gridCeil.position.y = SGX.config.boxH / 2 - 0.01;
             gridCeil.rotation.x = Math.PI;
             scene.add(gridCeil);
 
-            scaleMainObject();
+            // Reescalar la molécula si ya existe
+            scaleModelToBox();
         }
 
-        buildEncasedRoom();
+        buildSpatialBox(); // Ejecutar 1ra vez
 
         // ==========================================
-        // 3. CARGA DEL MODELO 3D (Asset)
+        // 3. CARGA DEL ASSET (LA MOLÉCULA GLB)
         // ==========================================
         const modelUrl = 'https://static.wixstatic.com/3d/fe81a7_8d5fdc7130e14daa8e101d7569c59b37.glb';
-        let mainObject;
-        let originalModelSize = new THREE.Vector3();
+        let mainModel;
+        let originalBoundingBoxSize = new THREE.Vector3();
 
-        function scaleMainObject() {
-            if (!mainObject) return;
-            const maxDim = Math.max(originalModelSize.x, originalModelSize.y, originalModelSize.z);
-            const scale = (SGXConfig.boxHeight * 0.6) / maxDim; 
-            mainObject.scale.set(scale, scale, scale);
+        function scaleModelToBox() {
+            if (!mainModel) return;
+            // Calcular la escala para que siempre ocupe el 60% de la altura de la caja
+            const maxDim = Math.max(originalBoundingBoxSize.x, originalBoundingBoxSize.y, originalBoundingBoxSize.z);
+            const scaleTarget = (SGX.config.boxH * 0.6) / maxDim; 
+            mainModel.scale.set(scaleTarget, scaleTarget, scaleTarget);
         }
 
         const loader = new THREE.GLTFLoader();
-        loader.load(
-            modelUrl,
-            (gltf) => {
-                mainObject = gltf.scene;
-                const box = new THREE.Box3().setFromObject(mainObject);
-                const center = box.getCenter(new THREE.Vector3());
-                box.getSize(originalModelSize);
-                mainObject.position.sub(center); 
-                scaleMainObject(); 
-                scene.add(mainObject);
-            }
-        );
+        loader.load(modelUrl, (gltf) => {
+            mainModel = gltf.scene;
+            
+            // Lógica estricta de auto-centrado
+            const box = new THREE.Box3().setFromObject(mainModel);
+            const center = box.getCenter(new THREE.Vector3());
+            box.getSize(originalBoundingBoxSize);
+            
+            mainModel.position.sub(center); // Centrar en el origen absoluto (0,0,0)
+            scaleModelToBox(); 
+            scene.add(mainModel);
+        });
 
         // ==========================================
-        // 4. LÓGICA DE TRACKING Y LERP
+        // 4. BUCLE DE RENDER Y LERP (Siempre Activo)
         // ==========================================
-        let targetX = 0;
-        let targetY = 0;
-        let currentX = 0;
-        let currentY = 0;
-
         function lerp(start, end, amt) {
             return (1 - amt) * start + amt * end;
         }
 
+        function renderLoop() {
+            requestAnimationFrame(renderLoop);
+
+            // Rotación pasiva lenta para dar sensación de vida
+            if (mainModel) mainModel.rotation.y += 0.003;
+
+            // Interpolación matemática (Filtro de fricción)
+            SGX.currentX = lerp(SGX.currentX, SGX.targetX, SGX.config.friccion);
+            SGX.currentY = lerp(SGX.currentY, SGX.targetY, SGX.config.friccion);
+
+            // Actualizar cámara
+            camera.position.x = SGX.currentX;
+            camera.position.y = SGX.currentY;
+            camera.lookAt(0, 0, 0); // Anclaje visual forzado al centro
+
+            renderer.render(scene, camera);
+        }
+
+        renderLoop(); // Iniciar render inmediatamente (independiente de la IA)
+
         // ==========================================
-        // 5. SISTEMA DE UI INTERACTIVO (LIL-GUI)
+        // 5. SISTEMA DE CONTROLES (LIL-GUI)
         // ==========================================
-        function initGUI() {
-            const gui = new lil.GUI({ title: '⚙️ SGX Control Panel' });
+        function initializeControlPanel() {
+            const gui = new lil.GUI({ title: '⚙️ SGX Arquitectura' });
             document.querySelector('.lil-gui').style.display = 'block';
 
-            const folderParallax = gui.addFolder('👁️ Parallax Engine');
-            folderParallax.add(SGXConfig, 'tipoParallax', ['Portal (Físico)', 'Espejo (Sigue Mirada)']).name('Modo de Interacción');
-            folderParallax.add(SGXConfig, 'depthMultiplierX', 0, 10).name('Amplitud X');
-            folderParallax.add(SGXConfig, 'depthMultiplierY', 0, 10).name('Amplitud Y');
-            folderParallax.add(SGXConfig, 'lerpFactor', 0.01, 0.5).name('Fricción (Lerp)');
-            folderParallax.add(SGXConfig, 'invertX').name('Invertir Eje X Base');
-            folderParallax.add(SGXConfig, 'invertY').name('Invertir Eje Y Base');
-            folderParallax.add(SGXConfig, 'resetView').name('Resetear Vista');
+            const folderIA = gui.addFolder('👁️ Motor de Parallax');
+            folderIA.add(SGX.config, 'modo', ['Portal (Efecto Vitrina)', 'Espejo (Sigue Mirada)']).name('Física Base');
+            folderIA.add(SGX.config, 'amplitudX', 0, 15).name('Multiplicador X');
+            folderIA.add(SGX.config, 'amplitudY', 0, 15).name('Multiplicador Y');
+            folderIA.add(SGX.config, 'friccion', 0.01, 0.4).name('Fricción (Lerp)');
+            folderIA.add(SGX.config, 'invertirX').name('Espejar Eje X');
+            folderIA.add(SGX.config, 'invertirY').name('Espejar Eje Y');
+            folderIA.add(SGX.config, 'recalibrar').name('Forzar Centro');
 
-            const folderBox = gui.addFolder('📐 Spatial Boundary');
-            folderBox.add(SGXConfig, 'boxWidth', 2, 30).name('Ancho (X)').onChange(buildEncasedRoom);
-            folderBox.add(SGXConfig, 'boxHeight', 2, 20).name('Altura (Y)').onChange(buildEncasedRoom);
-            folderBox.add(SGXConfig, 'boxDepth', 2, 30).name('Profundidad (Z)').onChange(buildEncasedRoom);
-
-            const folderEnv = gui.addFolder('💡 Environment');
-            folderEnv.add(SGXConfig, 'cameraZ', 2, 20).name('Distancia Cámara').onChange(v => camera.position.z = v);
-            folderEnv.add(SGXConfig, 'lightIntensity', 0, 3).name('Luz Global').onChange(v => {
-                hemiLight.intensity = v;
-                dirLight.intensity = v;
-            });
-
-            folderEnv.close();
+            const folderGeo = gui.addFolder('📐 Vitrina Espacial (Boundary)');
+            // onFinishChange se asegura de que solo se reconstruya la caja al soltar el ratón (Salva la RAM)
+            folderGeo.add(SGX.config, 'boxW', 5, 40).name('Ancho').onFinishChange(buildSpatialBox);
+            folderGeo.add(SGX.config, 'boxH', 5, 20).name('Alto').onFinishChange(buildSpatialBox);
+            folderGeo.add(SGX.config, 'boxD', 5, 30).name('Profundidad').onFinishChange(buildSpatialBox);
+            
+            folderGeo.add(SGX.config, 'camZ', 2, 20).name('Distancia Espectador').onChange(v => camera.position.z = v);
         }
 
         // ==========================================
-        // 6. INICIALIZACIÓN IA Y MEDIA (NATIVE WEBRTC)
+        // 6. FLUJO DE IA Y HARDWARE (SECUENCIA BLINDADA)
         // ==========================================
-        const videoElement = document.getElementById('input_video');
         const startBtn = document.getElementById('start-btn');
         const uiLayer = document.getElementById('ui-layer');
-        const loadingMsg = document.getElementById('loading-msg');
-        const hudData = document.getElementById('hud-data');
+        const videoEl = document.getElementById('video_feed');
+        const hud = document.getElementById('hud-data');
 
-        let isSystemInitialized = false;
+        let isAppRunning = false;
 
+        // Configuración de la Red Neuronal
         const faceMesh = new FaceMesh({locateFile: (file) => {
             return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
         }});
-
+        
         faceMesh.setOptions({
             maxNumFaces: 1,
             refineLandmarks: false,
@@ -294,92 +332,92 @@
             minTrackingConfidence: 0.6
         });
 
+        // Cerebro de la IA (Se ejecuta cada vez que lee un rostro)
         faceMesh.onResults((results) => {
-            // Desbloqueo seguro
-            if (!isSystemInitialized) {
-                isSystemInitialized = true;
-                uiLayer.style.opacity = '0';
-                setTimeout(() => { uiLayer.style.display = 'none'; }, 500);
-                hudData.style.display = 'block';
-                initGUI(); 
-            }
-
             if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-                const nose = results.multiFaceLandmarks[0][1];
-                let dirX = SGXConfig.invertX ? -1 : 1;
-                let dirY = SGXConfig.invertY ? -1 : 1;
-                let modeMultiplier = SGXConfig.tipoParallax === 'Portal (Físico)' ? 1 : -1;
+                const nose = results.multiFaceLandmarks[0][1]; // Landmark 1: Punta de la nariz
+                
+                // 1. Normalizar de [0, 1] a [-1, 1]
+                let normX = (nose.x - 0.5) * 2;
+                let normY = (nose.y - 0.5) * 2;
 
-                targetX = (nose.x - 0.5) * 2 * SGXConfig.depthMultiplierX * dirX * modeMultiplier; 
-                targetY = (nose.y - 0.5) * 2 * SGXConfig.depthMultiplierY * dirY * modeMultiplier; 
+                // 2. Aplicar correctores
+                let multX = SGX.config.invertirX ? -1 : 1;
+                let multY = SGX.config.invertirY ? -1 : 1;
+                let modo = SGX.config.modo === 'Portal (Efecto Vitrina)' ? -1 : 1; // El portal invierte el movimiento
 
-                hudData.innerText = `TARGET X: ${targetX.toFixed(2)} | TARGET Y: ${targetY.toFixed(2)}`;
+                // 3. Asignar target final
+                SGX.targetX = normX * SGX.config.amplitudX * multX * modo;
+                SGX.targetY = normY * SGX.config.amplitudY * multY * modo;
+
+                hud.innerText = `X: ${SGX.targetX.toFixed(2)} | Y: ${SGX.targetY.toFixed(2)}`;
             }
         });
 
-        // RE-ESCRITURA NATIVA DEL SENSOR (Fuerza el Prompt del Navegador)
+        // Bucle continuo de envío de frames del video a la IA
+        async function processVideoFrame() {
+            if (!videoEl.paused && !videoEl.ended) {
+                try {
+                    await faceMesh.send({image: videoEl});
+                } catch (e) {
+                    // Silenciar errores minúsculos de procesamiento de frame
+                }
+            }
+            requestAnimationFrame(processVideoFrame);
+        }
+
+        // EL TRIGGER (El botón que inicia todo el evento)
         startBtn.addEventListener('click', async () => {
+            if (isAppRunning) return;
+            
             startBtn.style.display = 'none';
-            loadingMsg.style.display = 'block';
-            loadingMsg.innerText = "Solicitando permisos de cámara...";
+            logger.innerText = "SOLICITANDO ACCESO AL HARDWARE...";
+            logger.style.color = "#FDCC0D";
 
             try {
-                // 1. Llamada cruda a la tarjeta madre/navegador para forzar el permiso
+                // 1. Solicitar cámara cruda al navegador (Forzar Prompt)
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { width: 640, height: 480, facingMode: "user" } 
                 });
                 
-                // 2. Conectar stream de video
-                videoElement.srcObject = stream;
+                // 2. Inyectar video
+                videoEl.srcObject = stream;
                 
-                // 3. Cuando el video arranca, iniciamos el loop hacia la IA
-                videoElement.onloadedmetadata = () => {
-                    videoElement.play();
-                    loadingMsg.innerText = "Cámara conectada. Cargando IA...";
+                videoEl.onloadedmetadata = async () => {
+                    videoEl.play();
+                    logger.innerText = "CÁMARA CONECTADA. DESPERTANDO RED NEURONAL...";
                     
-                    async function sendFrameToAI() {
-                        if (!videoElement.paused && !videoElement.ended) {
-                            try {
-                                await faceMesh.send({image: videoElement});
-                            } catch (e) {
-                                // Silenciamos warnings de carga inicial
-                            }
-                        }
-                        requestAnimationFrame(sendFrameToAI);
+                    try {
+                        // 3. Inicializar IA obligatoriamente ANTES de enviar frames
+                        await faceMesh.initialize();
+                        
+                        // 4. Limpieza de UI e inicio de la magia
+                        isAppRunning = true;
+                        uiLayer.style.opacity = '0';
+                        setTimeout(() => { uiLayer.style.display = 'none'; }, 500);
+                        
+                        hud.style.display = 'block';
+                        initializeControlPanel();
+                        
+                        // 5. Arrancar bucle de inyección
+                        processVideoFrame();
+
+                    } catch (aiError) {
+                        logger.innerText = "FALLO DESCARGANDO IA (REVISA CONEXIÓN A INTERNET O CDN).";
+                        logger.style.color = "#ff4444";
+                        console.error(aiError);
                     }
-                    sendFrameToAI(); // Iniciar loop
                 };
 
-            } catch (err) {
-                loadingMsg.innerText = "Error: Permiso de cámara denegado o no hay cámara conectada.";
-                loadingMsg.style.color = "#FF4444";
-                console.error("Fallo de Hardware WebRTC:", err);
+            } catch (cameraError) {
+                logger.innerText = "ACCESO DENEGADO A LA CÁMARA O HARDWARE NO DETECTADO.";
+                logger.style.color = "#ff4444";
+                console.error(cameraError);
             }
         });
 
         // ==========================================
-        // 7. RENDER LOOP
-        // ==========================================
-        function animate() {
-            requestAnimationFrame(animate);
-
-            // Objeto principal rota súper lento para darle vida a la escena
-            if (mainObject) mainObject.rotation.y += 0.002;
-
-            currentX = lerp(currentX, targetX, SGXConfig.lerpFactor);
-            currentY = lerp(currentY, targetY, SGXConfig.lerpFactor);
-
-            camera.position.x = currentX;
-            camera.position.y = currentY;
-            camera.lookAt(scene.position);
-
-            renderer.render(scene, camera);
-        }
-
-        animate();
-
-        // ==========================================
-        // 8. RESPONSIVIDAD
+        // 7. EVENTOS DE VENTANA
         // ==========================================
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
