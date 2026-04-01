@@ -3,59 +3,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SGX - Spatial Head-Coupled Portal</title>
+    <title>SGX - Spatial Encased Portal</title>
     <style>
         body { 
             margin: 0; 
             overflow: hidden; 
-            background: #000; 
+            background: #050505; 
             font-family: 'Courier New', Courier, monospace;
         }
         canvas { 
             display: block; 
         }
         #input_video { 
-            display: none; /* Solo actúa como sensor, no lo renderizamos en UI */
+            display: none; 
         }
+        /* UI Layer - Bloquea la interacción hasta dar clic */
         #ui-layer {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            pointer-events: none;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
+            background: rgba(0, 0, 0, 0.85);
             color: #FDCC0D; /* SGX Yellow */
-            z-index: 10;
+            z-index: 20;
+            backdrop-filter: blur(5px);
         }
-        .status-box {
-            background: rgba(50, 82, 123, 0.8); /* SGX Blue con opacidad */
-            border: 1px solid #FDCC0D;
-            padding: 20px;
+        .start-box {
+            background: rgba(50, 82, 123, 0.9); /* SGX Blue */
+            border: 2px solid #FDCC0D;
+            padding: 30px;
             text-align: center;
             border-radius: 4px;
-            box-shadow: 0 0 15px rgba(253, 204, 13, 0.3);
+            box-shadow: 0 0 20px rgba(253, 204, 13, 0.4);
+            max-width: 400px;
         }
-        #loading-text {
-            font-size: 1.2rem;
+        button {
+            background: #FDCC0D;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1rem;
             font-weight: bold;
-            margin-bottom: 10px;
+            font-family: 'Courier New', Courier, monospace;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: all 0.2s ease;
         }
-        .hud {
+        button:hover {
+            background: #fff;
+            box-shadow: 0 0 15px #FDCC0D;
+        }
+        #hud-data {
             position: absolute;
             bottom: 20px;
             left: 20px;
-            color: #888888;
+            color: #FDCC0D;
             font-size: 0.8rem;
             text-transform: uppercase;
+            pointer-events: none;
+            z-index: 10;
         }
     </style>
     <!-- Three.js Base -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- GLTFLoader -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <!-- MediaPipe FaceMesh -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
@@ -63,21 +78,24 @@
 </head>
 <body>
 
-    <!-- Sensor de video oculto -->
     <video id="input_video" autoplay playsinline></video>
     
-    <!-- Contenedor del Render -->
     <div id="scene-container"></div>
 
-    <!-- UI Overlay -->
     <div id="ui-layer">
-        <div class="status-box" id="status-box">
-            <div id="loading-text">INICIALIZANDO MOTOR SGX...</div>
-            <div id="sub-text" style="color: #fff; font-size: 0.9rem;">Esperando acceso a cámara y modelo 3D</div>
+        <div class="start-box">
+            <h2>SGX SPATIAL PORTAL</h2>
+            <p style="color: #fff; font-size: 0.9rem;">
+                Esta experiencia requiere tracking facial para crear la ilusión de profundidad (Parallax 3D).
+            </p>
+            <button id="start-btn">INICIAR SENSOR ÓPTICO</button>
+            <p id="loading-msg" style="display: none; color: #fff; margin-top: 15px; font-size: 0.8rem;">
+                Cargando Asset y Motor IA...
+            </p>
         </div>
     </div>
     
-    <div class="hud" id="hud-data">TARGET X: 0.00 | TARGET Y: 0.00</div>
+    <div id="hud-data" style="display: none;">TARGET X: 0.00 | TARGET Y: 0.00</div>
 
     <script>
         // ==========================================
@@ -85,56 +103,59 @@
         // ==========================================
         const container = document.getElementById('scene-container');
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x050505, 0.02);
 
-        // Setup de cámara
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const initialCameraZ = 8;
-        camera.position.z = initialCameraZ;
+        camera.position.z = 8;
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Optimización de pixeles
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.outputEncoding = THREE.sRGBEncoding;
         container.appendChild(renderer.domElement);
 
-        // Iluminación (Estudio básico para resaltar el GLB)
-        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
-        hemiLight.position.set(0, 200, 0);
+        // Iluminación
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+        hemiLight.position.set(0, 20, 0);
         scene.add(hemiLight);
 
         const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(0, 20, 10);
+        dirLight.position.set(5, 10, 5);
         scene.add(dirLight);
-        
-        const backLight = new THREE.PointLight(0xFDCC0D, 1, 100);
-        backLight.position.set(-5, 5, -5);
-        scene.add(backLight);
-
-        // Partículas de fondo (Para acentuar el paralaje)
-        const particlesGeo = new THREE.BufferGeometry();
-        const particlesCount = 200;
-        const posArray = new Float32Array(particlesCount * 3);
-        for(let i = 0; i < particlesCount * 3; i++) {
-            posArray[i] = (Math.random() - 0.5) * 30; // Spread espacial
-        }
-        particlesGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-        const particlesMat = new THREE.PointsMaterial({
-            size: 0.05,
-            color: 0x32527B, // SGX Metallic Blue
-            transparent: true,
-            opacity: 0.8
-        });
-        const particlesMesh = new THREE.Points(particlesGeo, particlesMat);
-        particlesMesh.position.z = -5;
-        scene.add(particlesMesh);
 
         // ==========================================
-        // 2. CARGA DEL MODELO 3D (Asset de Wix)
+        // 2. LA CAJA DE CONTENCIÓN (BOUNDARY BOX)
+        // ==========================================
+        // VARIABLES MAESTRAS (Modifícalas aquí)
+        const boxWidth = 10;
+        const boxHeight = 8;
+        const boxDepth = 8;
+
+        const roomGeo = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+        const roomMat = new THREE.MeshStandardMaterial({
+            color: 0x111111,
+            side: THREE.BackSide, // Renderiza el interior
+            roughness: 0.8,
+            metalness: 0.2
+        });
+        const room = new THREE.Mesh(roomGeo, roomMat);
+        scene.add(room);
+
+        // Rejilla base (Floor Grid) para forzar las líneas de perspectiva espacial
+        const gridFloor = new THREE.GridHelper(boxWidth, 20, 0xFDCC0D, 0x32527B);
+        gridFloor.position.y = -boxHeight / 2 + 0.01; // Ligeramente arriba del piso para evitar Z-fighting
+        scene.add(gridFloor);
+
+        // Rejilla de techo
+        const gridCeil = new THREE.GridHelper(boxWidth, 20, 0xFDCC0D, 0x32527B);
+        gridCeil.position.y = boxHeight / 2 - 0.01;
+        gridCeil.rotation.x = Math.PI;
+        scene.add(gridCeil);
+
+        // ==========================================
+        // 3. CARGA DEL MODELO 3D (Asset)
         // ==========================================
         const modelUrl = 'https://static.wixstatic.com/3d/fe81a7_8d5fdc7130e14daa8e101d7569c59b37.glb';
         let mainObject;
-        let modelLoaded = false;
 
         const loader = new THREE.GLTFLoader();
         loader.load(
@@ -142,59 +163,51 @@
             (gltf) => {
                 mainObject = gltf.scene;
                 
-                // Auto-centrado y auto-escalado (Ojo Métrico)
+                // Auto-centrado
                 const box = new THREE.Box3().setFromObject(mainObject);
                 const center = box.getCenter(new THREE.Vector3());
                 const size = box.getSize(new THREE.Vector3());
                 
-                // Reposicionar al centro del mundo
-                mainObject.position.x += (mainObject.position.x - center.x);
-                mainObject.position.y += (mainObject.position.y - center.y);
-                mainObject.position.z += (mainObject.position.z - center.z);
+                mainObject.position.sub(center); // Centrar en (0,0,0)
                 
-                // Escalar basado en el tamaño de la pantalla
+                // Escalar basado en la caja para que no se salga
                 const maxDim = Math.max(size.x, size.y, size.z);
-                const scale = 5 / maxDim; // Normaliza a tamaño 5 unidades
+                const scale = (boxHeight * 0.6) / maxDim; // Ocupa el 60% de la altura de la caja
                 mainObject.scale.set(scale, scale, scale);
 
                 scene.add(mainObject);
-                modelLoaded = true;
-                checkInitStatus();
-            },
-            (xhr) => {
-                const percent = Math.round((xhr.loaded / xhr.total) * 100);
-                document.getElementById('sub-text').innerText = `Descargando Asset 3D: ${percent || '...'}%`;
-            },
-            (error) => {
-                console.error('Error cargando el GLB', error);
-                document.getElementById('loading-text').innerText = "ERROR DE CARGA";
-                document.getElementById('loading-text').style.color = "red";
-                document.getElementById('sub-text').innerText = "Revisa CORS o la URL del asset";
             }
         );
 
         // ==========================================
-        // 3. LÓGICA DE TRACKING Y LERP (Filtro de Fricción)
+        // 4. LÓGICA DE TRACKING Y LERP
         // ==========================================
         let targetX = 0;
         let targetY = 0;
         let currentX = 0;
         let currentY = 0;
         
-        const depthMultiplierX = 4.0; // Amplitud lateral
-        const depthMultiplierY = 3.0; // Amplitud vertical
-        const lerpFactor = 0.08; // Suavizado. Más bajo = más floaty, más alto = más jitter
+        // LIMITADORES DE CÁMARA (Para no salirnos de la caja)
+        const depthMultiplierX = 3.5; 
+        const depthMultiplierY = 2.5; 
+        const lerpFactor = 0.12; 
 
         function lerp(start, end, amt) {
             return (1 - amt) * start + amt * end;
         }
 
         // ==========================================
-        // 4. MOTOR MEDIAPIPE (Sensor Óptico)
+        // 5. INICIALIZACIÓN IA Y UI (PERMISOS)
         // ==========================================
         const videoElement = document.getElementById('input_video');
-        let trackerLoaded = false;
+        const startBtn = document.getElementById('start-btn');
+        const uiLayer = document.getElementById('ui-layer');
+        const loadingMsg = document.getElementById('loading-msg');
+        const hudData = document.getElementById('hud-data');
 
+        let cameraUtilsInstance = null;
+
+        // Configuración MediaPipe
         const faceMesh = new FaceMesh({locateFile: (file) => {
             return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
         }});
@@ -207,62 +220,47 @@
         });
 
         faceMesh.onResults((results) => {
-            if (!trackerLoaded) {
-                trackerLoaded = true;
-                checkInitStatus();
+            // Quitar UI cuando detecta el primer frame válido
+            if (uiLayer.style.display !== 'none') {
+                uiLayer.style.display = 'none';
+                hudData.style.display = 'block';
             }
 
             if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-                const nose = results.multiFaceLandmarks[0][1]; // Landmark 1 = Punta de la nariz
+                const nose = results.multiFaceLandmarks[0][1];
                 
-                // Normalización de coordenadas. (0,0 es arriba a la izq en la imagen)
+                // Normalización
                 targetX = (nose.x - 0.5) * -2 * depthMultiplierX; 
                 targetY = -(nose.y - 0.5) * 2 * depthMultiplierY; 
 
-                document.getElementById('hud-data').innerText = `TARGET X: ${targetX.toFixed(2)} | TARGET Y: ${targetY.toFixed(2)}`;
+                hudData.innerText = `TARGET X: ${targetX.toFixed(2)} | TARGET Y: ${targetY.toFixed(2)}`;
             }
         });
 
-        const camera_utils = new Camera(videoElement, {
-            onFrame: async () => {
-                await faceMesh.send({image: videoElement});
-            },
-            width: 640,
-            height: 480
-        });
+        // Trigger manual de hardware
+        startBtn.addEventListener('click', () => {
+            startBtn.style.display = 'none';
+            loadingMsg.style.display = 'block';
 
-        // Intentar iniciar cámara
-        camera_utils.start().catch(err => {
-            document.getElementById('loading-text').innerText = "ERROR DE SENSOR";
-            document.getElementById('sub-text').innerText = "Otorga permisos de cámara al iFrame";
-        });
+            cameraUtilsInstance = new Camera(videoElement, {
+                onFrame: async () => {
+                    await faceMesh.send({image: videoElement});
+                },
+                width: 640,
+                height: 480
+            });
 
-        // ==========================================
-        // 5. CONTROL DE ESTADOS
-        // ==========================================
-        function checkInitStatus() {
-            if (modelLoaded && trackerLoaded) {
-                document.getElementById('status-box').style.display = 'none';
-            } else if (modelLoaded) {
-                document.getElementById('sub-text').innerText = "Asset cargado. Buscando rostro...";
-            }
-        }
+            cameraUtilsInstance.start().catch(err => {
+                loadingMsg.innerText = "Error: Acceso a cámara denegado. Revisa tus permisos.";
+                loadingMsg.style.color = "red";
+            });
+        });
 
         // ==========================================
         // 6. RENDER LOOP
         // ==========================================
-        const clock = new THREE.Clock();
-
         function animate() {
             requestAnimationFrame(animate);
-
-            // Rotación pasiva lenta del objeto para darle vida si el usuario no se mueve
-            if (mainObject) {
-                mainObject.rotation.y += 0.002;
-            }
-
-            // Movimiento suave de las partículas de fondo
-            particlesMesh.rotation.y += 0.0005;
 
             // Filtro LERP
             currentX = lerp(currentX, targetX, lerpFactor);
@@ -272,7 +270,7 @@
             camera.position.x = currentX;
             camera.position.y = currentY;
             
-            // Magia del Parallax: Siempre mirar al centro del mundo (0,0,0)
+            // Siempre mirar al centro del mundo
             camera.lookAt(scene.position);
 
             renderer.render(scene, camera);
@@ -281,7 +279,7 @@
         animate();
 
         // ==========================================
-        // 7. RESPONSIVIDAD DEL SISTEMA
+        // 7. RESPONSIVIDAD
         // ==========================================
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
