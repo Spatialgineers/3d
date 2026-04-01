@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SGX - Spatial Encased Portal</title>
+    <title>SGX - Spatial Encased Portal V3</title>
     <style>
         :root {
             --sgx-yellow: #FDCC0D;
-            --sgx-blue: #32527B;
+            --sgx-blue: #0070FF;
             --sgx-bg: #050505;
-            --glass: rgba(50, 82, 123, 0.4);
+            --sgx-gray: #333333;
+            --glass: rgba(51, 51, 51, 0.6);
         }
 
         body { 
@@ -33,7 +34,6 @@
             display: none; 
         }
         
-        /* UI Layer - Glassmorphism Premium */
         #ui-layer {
             position: absolute;
             top: 0;
@@ -44,298 +44,326 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            background: rgba(10, 15, 25, 0.7);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            z-index: 20;
-            transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.6s;
+            background: rgba(10, 10, 10, 0.85);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            z-index: 50;
+            transition: opacity 0.8s ease, visibility 0.8s;
         }
 
         .sgx-panel {
             background: var(--glass);
-            border: 1px solid rgba(253, 204, 13, 0.3);
-            border-radius: 16px;
+            border: 1px solid rgba(253, 204, 13, 0.4);
+            border-radius: 12px;
             padding: 40px;
             text-align: center;
+            width: 420px;
             max-width: 90%;
-            width: 450px;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.9), 0 0 30px rgba(253, 204, 13, 0.1);
+            box-shadow: 0 30px 60px rgba(0,0,0,0.8);
         }
 
         .sgx-panel h1 {
-            margin: 0 0 10px 0;
-            font-size: 2rem;
-            letter-spacing: 4px;
+            margin: 0 0 15px 0;
+            font-size: 2.2rem;
+            letter-spacing: 5px;
             text-transform: uppercase;
             font-weight: 900;
-        }
-
-        .sgx-panel p {
-            color: #bdc3c7;
-            font-size: 0.9rem;
-            line-height: 1.6;
-            margin-bottom: 30px;
+            color: white;
         }
 
         button.sgx-btn {
             background: var(--sgx-yellow);
             color: #000;
             border: none;
-            padding: 18px 40px;
+            padding: 20px;
             font-size: 1rem;
             font-weight: 900;
             font-family: inherit;
             cursor: pointer;
-            border-radius: 8px;
+            border-radius: 4px;
             text-transform: uppercase;
-            transition: all 0.3s ease;
-            box-shadow: 0 10px 20px rgba(253, 204, 13, 0.2);
             width: 100%;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
+            transition: all 0.3s;
         }
 
         button.sgx-btn:hover {
             background: #fff;
-            transform: translateY(-3px);
-            box-shadow: 0 15px 30px rgba(253, 204, 13, 0.4);
+            transform: scale(1.02);
         }
 
         button.secondary-btn {
             background: transparent;
-            color: var(--sgx-yellow);
-            border: 1px solid var(--sgx-yellow);
+            color: #888;
+            border: 1px solid #444;
             padding: 12px;
-            font-size: 0.8rem;
             width: 100%;
             cursor: pointer;
-            border-radius: 8px;
+            border-radius: 4px;
             text-transform: uppercase;
-            opacity: 0.8;
-        }
-
-        #log-console {
-            margin-top: 25px;
-            font-size: 0.75rem;
-            min-height: 40px;
-            color: #999;
-            background: rgba(0,0,0,0.6);
-            padding: 12px;
-            border-radius: 6px;
-            border-left: 4px solid var(--sgx-yellow);
-            text-align: left;
-            word-wrap: break-word;
-            font-family: 'Consolas', monospace;
+            font-size: 0.8rem;
         }
 
         #hud {
             position: absolute;
-            bottom: 30px;
-            left: 30px;
-            background: rgba(10, 20, 35, 0.85);
-            border: 1px solid var(--sgx-yellow);
-            padding: 15px 20px;
-            border-radius: 8px;
-            font-size: 0.75rem;
+            bottom: 25px;
+            left: 25px;
+            background: rgba(20, 20, 20, 0.9);
+            border-left: 5px solid var(--sgx-yellow);
+            padding: 15px;
+            font-size: 0.7rem;
             z-index: 10;
             display: none;
             pointer-events: none;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-            line-height: 1.8;
+            color: #aaa;
         }
 
         .lil-gui { 
-            --background-color: rgba(15, 20, 30, 0.98);
-            --text-color: var(--sgx-yellow);
-            --title-background-color: var(--sgx-blue);
-            --widget-color: #333;
-            --hover-color: #444;
+            --background-color: rgba(30, 30, 30, 0.95);
+            --text-color: #eee;
+            --title-background-color: #111;
+            --widget-color: #444;
             --focus-color: var(--sgx-yellow);
-            font-family: 'Courier New', Courier, monospace !important;
-            z-index: 25;
-        }
-
-        /* Mobile Adjustments */
-        @media (max-width: 600px) {
-            .sgx-panel { padding: 25px; }
-            .lil-gui { width: 100% !important; max-width: 280px; }
-            #hud { bottom: 10px; left: 10px; font-size: 0.65rem; }
+            z-index: 100;
         }
     </style>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <!-- Librería de MediaPipe en formato global -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/lil-gui@0.19"></script>
+
+    <!-- MIGRACIÓN A ES MODULES (ESTÁNDAR MODERNO) -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.147.0/examples/jsm/",
+            "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm"
+        }
+    }
+    </script>
 </head>
 <body>
 
+    <!-- Input oculto para subir modelos locales -->
+    <input type="file" id="local-model-upload" accept=".glb,.gltf" style="display: none;">
+
     <video id="webcam_feed" autoplay playsinline muted></video>
-    
     <div id="scene-container"></div>
 
     <div id="ui-layer">
         <div class="sgx-panel">
-            <h1>SGX ENGINE</h1>
-            <p>Spatial Parallax Validator v2.5<br>Enlaza tu sensor óptico para activar el tracking de profundidad IA o continúa en modo simulación manual.</p>
-            <button id="btn-start" class="sgx-btn">ENLAZAR SENSOR ÓPTICO</button>
-            <button id="btn-manual" class="secondary-btn">MODO MANUAL (CURSOR)</button>
-            <div id="log-console">SISTEMA: Iniciado. Esperando handshake...</div>
+            <h1>SGX.PORTAL</h1>
+            <p style="color: #888; margin-bottom: 30px;">DEPTH SENSING ENGINE V3<br>Física de amplitudes extendida y cromaticidad de ejes activada.</p>
+            <button id="btn-start" class="sgx-btn">ENLAZAR CÁMARA IA</button>
+            <button id="btn-manual" class="secondary-btn">SIMULACIÓN MANUAL</button>
         </div>
     </div>
     
     <div id="hud">
-        <strong style="color:white">SISTEMA DE SEGUIMIENTO</strong><br>
-        MODO: <span id="hud-mode">IDLE</span><br>
-        COORD_X: <span id="hud-x">0.00</span><br>
-        COORD_Y: <span id="hud-y">0.00</span>
+        <b style="color:var(--sgx-yellow)">SISTEMA DE SEGUIMIENTO ACTIVO</b><br>
+        MODO: <span id="hud-mode">-</span><br>
+        X-POTENTIAL: <span id="hud-x">0.00</span><br>
+        Y-POTENTIAL: <span id="hud-y">0.00</span>
     </div>
 
-    <script>
-        /**
-         * SGX SPATIAL ENGINE - CORE LOGIC
-         */
+    <!-- Script tipo módulo -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+        import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+        import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+        import GUI from 'lil-gui';
+
         const SGX = {
             targetCamX: 0,
             targetCamY: 0,
             currentCamX: 0,
             currentCamY: 0,
-            trackingMode: 'Mouse/Touch',
+            trackingMode: 'Idle',
             
             config: {
+                modelUrl: 'https://static.wixstatic.com/3d/fe81a7_8d5fdc7130e14daa8e101d7569c59b37.glb',
+                autoRotate: true,
                 modo: 'Portal (Físico)',
-                amplitudX: 5.5,
-                amplitudY: 4.5,
-                suavizado: 0.08,
+                amplitudX: 12.0,
+                amplitudY: 10.0,
+                suavizado: 0.05,
                 invertirX: false,
                 invertirY: false,
-                boxWidth: 15,
-                boxHeight: 10,
-                boxDepth: 12,
-                camDistance: 12,
-                showGrid: true,
-                reset: () => {
-                    SGX.targetCamX = 0; SGX.targetCamY = 0;
-                    SGX.currentCamX = 0; SGX.currentCamY = 0;
-                }
+                boxWidth: 20,
+                boxHeight: 12,
+                boxDepth: 15,
+                camDistance: 15,
+                showGrids: true,
+                reloadModel: () => loadExternalModel(SGX.config.modelUrl),
+                uploadLocal: () => document.getElementById('local-model-upload').click()
             }
         };
 
-        const logger = document.getElementById('log-console');
-        function log(msg, isError = false) {
-            const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            logger.innerText = `[${time}] > ${msg}`;
-            logger.style.color = isError ? '#FF5555' : '#FDCC0D';
-            if (isError) console.error(msg);
-        }
-
-        // --- THREE.JS ENGINE ---
-        const container = document.getElementById('scene-container');
+        // --- MOTOR THREE.JS ---
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setPixelRatio(window.devicePixelRatio);
         renderer.outputEncoding = THREE.sRGBEncoding;
-        container.appendChild(renderer.domElement);
+        document.getElementById('scene-container').appendChild(renderer.domElement);
 
-        // Lights
-        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-        const pLight = new THREE.PointLight(0xFDCC0D, 1.5, 30);
-        pLight.position.set(2, 4, 5);
-        scene.add(pLight);
-        
-        const topLight = new THREE.DirectionalLight(0x32527B, 1);
-        topLight.position.set(0, 10, 0);
-        scene.add(topLight);
+        // Iluminación
+        const amb = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(amb);
+        const sun = new THREE.DirectionalLight(0xffffff, 1);
+        sun.position.set(5, 10, 7);
+        scene.add(sun);
+        const spot = new THREE.PointLight(0xFDCC0D, 2, 40);
+        spot.position.set(0, 0, 5);
+        scene.add(spot);
 
-        // --- ROOM CONSTRUCTION ---
-        let encasingBox, gridFloor, gridCeil, gridWall;
+        // --- CONSTRUCCIÓN DEL ENTORNO (LA CAJA GRIS) ---
+        let roomGroup = new THREE.Group();
+        scene.add(roomGroup);
 
         function buildEncasing() {
-            if (encasingBox) scene.remove(encasingBox);
-            if (gridFloor) scene.remove(gridFloor);
-            if (gridCeil) scene.remove(gridCeil);
-            if (gridWall) scene.remove(gridWall);
-
-            const boxGeo = new THREE.BoxGeometry(SGX.config.boxWidth, SGX.config.boxHeight, SGX.config.boxDepth);
-            const boxMat = new THREE.MeshStandardMaterial({
-                color: 0x08080a,
-                side: THREE.BackSide,
-                roughness: 0.8,
-                metalness: 0.2
-            });
-            encasingBox = new THREE.Mesh(boxGeo, boxMat);
-            scene.add(encasingBox);
-
-            if (SGX.config.showGrid) {
-                const step = 15;
-                gridFloor = new THREE.GridHelper(SGX.config.boxWidth, step, 0xFDCC0D, 0x111111);
-                gridFloor.position.y = -SGX.config.boxHeight / 2 + 0.01;
-                scene.add(gridFloor);
-
-                gridCeil = new THREE.GridHelper(SGX.config.boxWidth, step, 0x32527B, 0x111111);
-                gridCeil.position.y = SGX.config.boxHeight / 2 - 0.01;
-                gridCeil.rotation.x = Math.PI;
-                scene.add(gridCeil);
-
-                gridWall = new THREE.GridHelper(SGX.config.boxHeight, step, 0xFDCC0D, 0x111111);
-                gridWall.position.z = -SGX.config.boxDepth / 2 + 0.01;
-                gridWall.rotation.x = Math.PI / 2;
-                scene.add(gridWall);
+            while(roomGroup.children.length > 0) { 
+                const obj = roomGroup.children[0];
+                if(obj.geometry) obj.geometry.dispose();
+                roomGroup.remove(obj); 
             }
 
-            if (loadedModel) scaleAndPositionModel();
-        }
+            const w = SGX.config.boxWidth;
+            const h = SGX.config.boxHeight;
+            const d = SGX.config.boxDepth;
 
-        // --- ASSET LOADER ---
-        const gltfLoader = new THREE.GLTFLoader();
-        let loadedModel = null;
-        let modelSize = new THREE.Vector3();
+            // La caja Gris #333333
+            const boxGeo = new THREE.BoxGeometry(w, h, d);
+            const boxMat = new THREE.MeshStandardMaterial({
+                color: 0x333333,
+                side: THREE.BackSide,
+                roughness: 0.7,
+                metalness: 0.1
+            });
+            const box = new THREE.Mesh(boxGeo, boxMat);
+            roomGroup.add(box);
 
-        function scaleAndPositionModel() {
-            if (!loadedModel) return;
-            const box = new THREE.Box3().setFromObject(loadedModel);
-            box.getSize(modelSize);
-            const maxDim = Math.max(modelSize.x, modelSize.y, modelSize.z);
-            const scale = (SGX.config.boxHeight * 0.5) / maxDim;
-            loadedModel.scale.set(scale, scale, scale);
-            loadedModel.position.set(0, 0, 0); 
-        }
-
-        gltfLoader.load(
-            'https://static.wixstatic.com/3d/fe81a7_8d5fdc7130e14daa8e101d7569c59b37.glb',
-            (gltf) => {
-                loadedModel = gltf.scene;
-                // Center model pivot
-                const box = new THREE.Box3().setFromObject(loadedModel);
-                const center = box.getCenter(new THREE.Vector3());
-                loadedModel.position.sub(center);
+            if (SGX.config.showGrids) {
+                const divisions = 20;
                 
-                const wrapper = new THREE.Group();
-                wrapper.add(loadedModel);
-                scene.add(wrapper);
-                loadedModel = wrapper;
+                // Grids Arriba y Abajo (AMARILLO)
+                const gridTop = new THREE.GridHelper(Math.max(w, d), divisions, 0xFDCC0D, 0x222222);
+                gridTop.position.y = h / 2 - 0.01;
+                roomGroup.add(gridTop);
 
-                scaleAndPositionModel();
-                log("Geometría SGX cargada y optimizada.");
-            },
-            undefined,
-            () => log("Error cargando Asset. Usando fallback.", true)
-        );
+                const gridBottom = new THREE.GridHelper(Math.max(w, d), divisions, 0xFDCC0D, 0x222222);
+                gridBottom.position.y = -h / 2 + 0.01;
+                roomGroup.add(gridBottom);
+
+                // Grids Lados (AZUL)
+                const gridLeft = new THREE.GridHelper(Math.max(h, d), divisions, 0x0070FF, 0x111111);
+                gridLeft.position.x = -w / 2 + 0.01;
+                gridLeft.rotation.z = Math.PI / 2;
+                roomGroup.add(gridLeft);
+
+                const gridRight = new THREE.GridHelper(Math.max(h, d), divisions, 0x0070FF, 0x111111);
+                gridRight.position.x = w / 2 - 0.01;
+                gridRight.rotation.z = Math.PI / 2;
+                roomGroup.add(gridRight);
+
+                // Grid Fondo (AZUL)
+                const gridBack = new THREE.GridHelper(Math.max(w, h), divisions, 0x0070FF, 0x111111);
+                gridBack.position.z = -d / 2 + 0.01;
+                gridBack.rotation.x = Math.PI / 2;
+                roomGroup.add(gridBack);
+            }
+        }
 
         buildEncasing();
 
-        // --- ANIMATION LOOP ---
+        // --- CARGA DE MODELOS (USANDO CLASES IMPORTADAS) ---
+        const loader = new GLTFLoader();
+        loader.setCrossOrigin('anonymous'); 
+        
+        // 1. SOPORTE DRACO (Geometría)
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/'); 
+        loader.setDRACOLoader(dracoLoader);
+
+        // 2. SOPORTE KTX2 (Texturas)
+        const ktx2Loader = new KTX2Loader();
+        ktx2Loader.setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/libs/basis/');
+        ktx2Loader.detectSupport(renderer);
+        loader.setKTX2Loader(ktx2Loader);
+
+        // 3. SOPORTE MESHOPT (Compresión adicional)
+        loader.setMeshoptDecoder(MeshoptDecoder);
+
+        let currentModel = null;
+
+        async function loadExternalModel(url) {
+            if (currentModel) scene.remove(currentModel);
+            
+            try {
+                let finalUrl = url;
+                
+                // Fetch a Blob Local para evitar CORS de Wix
+                if (url.includes('wixstatic.com') && !url.startsWith('blob:')) {
+                    console.log("Descargando asset de Wix a memoria local...");
+                    const response = await fetch(url, { mode: 'cors' });
+                    if (!response.ok) throw new Error("Fallo en la respuesta de red");
+                    const blob = await response.blob();
+                    finalUrl = URL.createObjectURL(blob);
+                }
+                
+                loader.load(finalUrl, (gltf) => {
+                    currentModel = gltf.scene;
+                    
+                    // Centrar y auto-escalar
+                    const box = new THREE.Box3().setFromObject(currentModel);
+                    const size = box.getSize(new THREE.Vector3());
+                    const center = box.getCenter(new THREE.Vector3());
+                    
+                    currentModel.position.sub(center);
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scale = (SGX.config.boxHeight * 0.6) / maxDim;
+                    currentModel.scale.set(scale, scale, scale);
+                    
+                    scene.add(currentModel);
+                    console.log("Carga completada con éxito.");
+                }, undefined, (err) => {
+                    console.error("Error renderizando el modelo:", err);
+                });
+                
+            } catch (err) {
+                console.error("Error en Fetch/Blob:", err);
+                alert("Error de red cargando el modelo. Verifica tu conexión o el link.");
+            }
+        }
+
+        // Listener para la subida de archivos locales
+        document.getElementById('local-model-upload').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const blobUrl = URL.createObjectURL(file);
+                loadExternalModel(blobUrl);
+                console.log("Cargando modelo local...");
+            }
+        });
+
+        loadExternalModel(SGX.config.modelUrl);
+
+        // --- ANIMACIÓN ---
         function animate() {
             requestAnimationFrame(animate);
 
-            if (loadedModel) {
-                loadedModel.rotation.y += 0.005;
-                loadedModel.position.y = Math.sin(Date.now() * 0.002) * 0.3;
+            if (currentModel) {
+                if (SGX.config.autoRotate) {
+                    currentModel.rotation.y += 0.005;
+                }
+                currentModel.position.y = Math.sin(Date.now() * 0.001) * 0.5;
             }
 
-            // Smooth damping
+            // Aplicación de Inercia (Lerp)
             SGX.currentCamX += (SGX.targetCamX - SGX.currentCamX) * SGX.config.suavizado;
             SGX.currentCamY += (SGX.targetCamY - SGX.currentCamY) * SGX.config.suavizado;
 
@@ -348,123 +376,106 @@
         }
         animate();
 
-        // --- CONTROLS & UI ---
+        // --- GUI DE ARQUITECTO ---
         function initGUI() {
-            const gui = new lil.GUI({ title: 'SGX CONTROL MATRIX' });
+            const gui = new GUI({ title: '⚙️ SGX ARCHITECT V3' });
             
-            const p = gui.addFolder('👁️ Percepción Parallax');
-            p.add(SGX.config, 'modo', ['Portal (Físico)', 'Espejo (Sigue Mirada)']);
-            p.add(SGX.config, 'amplitudX', 1, 15).name('Amplitud X');
-            p.add(SGX.config, 'amplitudY', 1, 15).name('Amplitud Y');
-            p.add(SGX.config, 'suavizado', 0.01, 0.3).name('Inercia');
-            p.add(SGX.config, 'invertirX').name('Invertir X');
-            p.add(SGX.config, 'invertirY').name('Invertir Y');
-            
-            const s = gui.addFolder('📐 Parámetros Espaciales');
-            s.add(SGX.config, 'boxWidth', 5, 40).name('Ancho').onChange(buildEncasing);
-            s.add(SGX.config, 'boxHeight', 5, 25).name('Alto').onChange(buildEncasing);
-            s.add(SGX.config, 'boxDepth', 5, 40).name('Profundidad').onChange(buildEncasing);
-            s.add(SGX.config, 'camDistance', 5, 30).name('Distancia Z');
-            s.add(SGX.config, 'showGrid').name('Mostrar Rejilla').onChange(buildEncasing);
-            
-            gui.add(SGX.config, 'reset').name('Recalibrar');
+            const modelFolder = gui.addFolder('📦 Asset Manager');
+            modelFolder.add(SGX.config, 'modelUrl').name('Link GLB/GLTF');
+            modelFolder.add(SGX.config, 'reloadModel').name('Actualizar Link');
+            modelFolder.add(SGX.config, 'uploadLocal').name('Subir Archivo Local');
+            modelFolder.add(SGX.config, 'autoRotate').name('Rotación Automática');
+
+            const physFolder = gui.addFolder('🔋 Potential Difference');
+            physFolder.add(SGX.config, 'amplitudX', 1, 40).name('Amplitud X (Max)');
+            physFolder.add(SGX.config, 'amplitudY', 1, 40).name('Amplitud Y (Max)');
+            physFolder.add(SGX.config, 'suavizado', 0.001, 0.5).name('Inercia (Fricción)');
+            physFolder.add(SGX.config, 'modo', ['Portal (Físico)', 'Espejo (Sigue Mirada)']);
+            physFolder.add(SGX.config, 'invertirX').name('Invertir Eje X');
+            physFolder.add(SGX.config, 'invertirY').name('Invertir Eje Y');
+
+            const roomFolder = gui.addFolder('📐 Espacio & Grids');
+            roomFolder.add(SGX.config, 'boxWidth', 5, 50).name('Ancho').onChange(buildEncasing);
+            roomFolder.add(SGX.config, 'boxHeight', 5, 30).name('Alto').onChange(buildEncasing);
+            roomFolder.add(SGX.config, 'boxDepth', 5, 50).name('Profundidad').onChange(buildEncasing);
+            roomFolder.add(SGX.config, 'camDistance', 5, 60).name('Z-Cam Dist');
+            roomFolder.add(SGX.config, 'showGrids').name('Activar Rejillas').onChange(buildEncasing);
+
+            gui.open();
         }
 
-        // --- MOUSE TRACKING (FALLBACK) ---
-        window.addEventListener('pointermove', (e) => {
-            if (SGX.trackingMode !== 'Mouse/Touch') return;
-            
-            const nx = (e.clientX / window.innerWidth - 0.5) * 2;
-            const ny = (e.clientY / window.innerHeight - 0.5) * 2;
-            
-            updateTarget(nx, ny);
-        });
-
-        function updateTarget(nx, ny) {
+        // --- INPUT TRACKING ---
+        function updateTracking(nx, ny) {
             const dirX = SGX.config.invertirX ? -1 : 1;
             const dirY = SGX.config.invertirY ? -1 : 1;
-            const logic = SGX.config.modo === 'Portal (Físico)' ? -1 : 1;
+            const multiplier = SGX.config.modo === 'Portal (Físico)' ? -1 : 1;
 
-            SGX.targetCamX = nx * SGX.config.amplitudX * dirX * logic;
-            SGX.targetCamY = -ny * SGX.config.amplitudY * dirY * logic;
+            SGX.targetCamX = nx * SGX.config.amplitudX * dirX * multiplier;
+            SGX.targetCamY = -ny * SGX.config.amplitudY * dirY * multiplier;
 
             document.getElementById('hud-x').innerText = SGX.targetCamX.toFixed(2);
             document.getElementById('hud-y').innerText = SGX.targetCamY.toFixed(2);
         }
 
-        // --- IA FACE TRACKING ---
-        const videoElement = document.getElementById('webcam_feed');
-        const btnStart = document.getElementById('btn-start');
-        const btnManual = document.getElementById('btn-manual');
-
-        const faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
-        faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: false, minDetectionConfidence: 0.6 });
-
-        faceMesh.onResults((results) => {
-            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-                const nose = results.multiFaceLandmarks[0][1]; 
-                updateTarget((nose.x - 0.5) * 2, (nose.y - 0.5) * 2);
+        window.addEventListener('pointermove', (e) => {
+            if (SGX.trackingMode === 'Manual') {
+                const nx = (e.clientX / window.innerWidth - 0.5) * 2;
+                const ny = (e.clientY / window.innerHeight - 0.5) * 2;
+                updateTracking(nx, ny);
             }
         });
 
-        async function cameraLoop() {
-            if (SGX.trackingMode === 'Face AI') {
-                await faceMesh.send({image: videoElement});
-                requestAnimationFrame(cameraLoop);
+        // --- MEDIA PIPE IA ---
+        const video = document.getElementById('webcam_feed');
+        // Usamos window.FaceMesh ya que se cargó globalmente en el <head>
+        const faceMesh = new window.FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+        faceMesh.setOptions({ maxNumFaces: 1, minDetectionConfidence: 0.5 });
+        faceMesh.onResults((res) => {
+            if (res.multiFaceLandmarks && res.multiFaceLandmarks.length > 0) {
+                const nose = res.multiFaceLandmarks[0][1];
+                updateTracking((nose.x - 0.5) * 2, (nose.y - 0.5) * 2);
+            }
+        });
+
+        async function aiLoop() {
+            if (SGX.trackingMode === 'Face IA') {
+                await faceMesh.send({image: video});
+                requestAnimationFrame(aiLoop);
             }
         }
 
-        function hideUI() {
-            const ui = document.getElementById('ui-layer');
-            ui.style.opacity = '0';
+        function launch(mode) {
+            SGX.trackingMode = mode;
+            document.getElementById('ui-layer').style.opacity = '0';
             setTimeout(() => {
-                ui.style.visibility = 'hidden';
+                document.getElementById('ui-layer').style.visibility = 'hidden';
                 document.getElementById('hud').style.display = 'block';
-                document.getElementById('hud-mode').innerText = SGX.trackingMode;
+                document.getElementById('hud-mode').innerText = mode;
                 initGUI();
-            }, 600);
+            }, 800);
         }
 
-        btnManual.addEventListener('click', () => {
-            SGX.trackingMode = 'Mouse/Touch';
-            log("Iniciando en modo manual...");
-            hideUI();
-        });
-
-        btnStart.addEventListener('click', async () => {
-            log("Solicitando acceso a sensor óptico...");
-            btnStart.disabled = true;
-            btnStart.innerText = "CONECTANDO...";
-
+        document.getElementById('btn-manual').onclick = () => launch('Manual');
+        document.getElementById('btn-start').onclick = async () => {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { width: 640, height: 480 } 
-                });
-                
-                videoElement.srcObject = stream;
-                videoElement.onloadedmetadata = () => {
-                    videoElement.play();
-                    SGX.trackingMode = 'Face AI';
-                    log("Sensor activo. Inicializando redes neuronales...");
-                    cameraLoop();
-                    hideUI();
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    video.play();
+                    launch('Face IA');
+                    aiLoop();
                 };
-            } catch (err) {
-                log("Error de hardware: " + err.message, true);
-                btnStart.innerText = "ERROR DE ACCESO";
-                setTimeout(() => {
-                    btnStart.disabled = false;
-                    btnStart.innerText = "REINTENTAR ENLACE";
-                }, 2000);
+            } catch (e) {
+                alert("No se pudo acceder a la cámara. Iniciando modo manual.");
+                launch('Manual');
             }
-        });
+        };
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
-
     </script>
 </body>
 </html>
