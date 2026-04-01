@@ -100,7 +100,8 @@
 </head>
 <body>
 
-    <video id="input_video" autoplay playsinline></video>
+    <!-- Muted es vital para el autoplay en navegadores modernos -->
+    <video id="input_video" autoplay playsinline muted></video>
     
     <div id="scene-container"></div>
 
@@ -112,7 +113,7 @@
             </p>
             <button id="start-btn" class="sgx-btn">INICIAR SENSOR ÓPTICO</button>
             <p id="loading-msg" style="display: none; color: #fff; margin-top: 15px; font-size: 0.8rem;">
-                Cargando Asset y Motor IA...
+                Encendiendo sensor y descargando IA...
             </p>
         </div>
     </div>
@@ -350,36 +351,30 @@
             }
         });
 
-        startBtn.addEventListener('click', async () => {
+        startBtn.addEventListener('click', () => {
             startBtn.style.display = 'none';
             loadingMsg.style.display = 'block';
-            loadingMsg.innerText = "Inicializando IA y descargando pesos neurales...";
+            loadingMsg.innerText = "Encendiendo sensor y descargando IA...";
 
-            try {
-                // 1. Forzar inicialización de MediaPipe ANTES de enviar frames (Mata el Race Condition)
-                await faceMesh.initialize();
-                
-                loadingMsg.innerText = "Encendiendo sensor óptico...";
+            // Arranque directo. FaceMesh se inicializa solo al recibir el primer frame.
+            cameraUtilsInstance = new Camera(videoElement, {
+                onFrame: async () => {
+                    try {
+                        await faceMesh.send({image: videoElement});
+                    } catch (e) {
+                        // Silenciamos los drops de los primeros milisegundos mientras baja el .wasm
+                        console.warn("Sincronizando pesos neurales...");
+                    }
+                },
+                width: 640,
+                height: 480
+            });
 
-                // 2. Encender cámara solo cuando la IA esté lista
-                cameraUtilsInstance = new Camera(videoElement, {
-                    onFrame: async () => {
-                        try {
-                            await faceMesh.send({image: videoElement});
-                        } catch (e) {
-                            console.error("Frame drop (Normal en inicialización):", e);
-                        }
-                    },
-                    width: 640,
-                    height: 480
-                });
-
-                await cameraUtilsInstance.start();
-            } catch (err) {
-                loadingMsg.innerText = "Error crítico: Acceso a cámara denegado o fallo de CDN. Revisa permisos.";
+            cameraUtilsInstance.start().catch(err => {
+                loadingMsg.innerText = "Error crítico: Acceso a cámara denegado. Revisa permisos.";
                 loadingMsg.style.color = "red";
-                console.error(err);
-            }
+                console.error("Error de Hardware:", err);
+            });
         });
 
         // ==========================================
