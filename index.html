@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGX - Spatial Head-Coupled Portal</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: #000; 
+            font-family: 'Courier New', Courier, monospace;
+        }
+        canvas { 
+            display: block; 
+        }
+        #input_video { 
+            display: none; /* Solo actúa como sensor, no lo renderizamos en UI */
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #FDCC0D; /* SGX Yellow */
+            z-index: 10;
+        }
+        .status-box {
+            background: rgba(50, 82, 123, 0.8); /* SGX Blue con opacidad */
+            border: 1px solid #FDCC0D;
+            padding: 20px;
+            text-align: center;
+            border-radius: 4px;
+            box-shadow: 0 0 15px rgba(253, 204, 13, 0.3);
+        }
+        #loading-text {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .hud {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #888888;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+        }
+    </style>
+    <!-- Three.js Base -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- GLTFLoader -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <!-- MediaPipe FaceMesh -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+</head>
+<body>
+
+    <!-- Sensor de video oculto -->
+    <video id="input_video" autoplay playsinline></video>
+    
+    <!-- Contenedor del Render -->
+    <div id="scene-container"></div>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer">
+        <div class="status-box" id="status-box">
+            <div id="loading-text">INICIALIZANDO MOTOR SGX...</div>
+            <div id="sub-text" style="color: #fff; font-size: 0.9rem;">Esperando acceso a cámara y modelo 3D</div>
+        </div>
+    </div>
+    
+    <div class="hud" id="hud-data">TARGET X: 0.00 | TARGET Y: 0.00</div>
+
+    <script>
+        // ==========================================
+        // 1. ARQUITECTURA THREE.JS
+        // ==========================================
+        const container = document.getElementById('scene-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050505, 0.02);
+
+        // Setup de cámara
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const initialCameraZ = 8;
+        camera.position.z = initialCameraZ;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Optimización de pixeles
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        container.appendChild(renderer.domElement);
+
+        // Iluminación (Estudio básico para resaltar el GLB)
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+        hemiLight.position.set(0, 200, 0);
+        scene.add(hemiLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(0, 20, 10);
+        scene.add(dirLight);
+        
+        const backLight = new THREE.PointLight(0xFDCC0D, 1, 100);
+        backLight.position.set(-5, 5, -5);
+        scene.add(backLight);
+
+        // Partículas de fondo (Para acentuar el paralaje)
+        const particlesGeo = new THREE.BufferGeometry();
+        const particlesCount = 200;
+        const posArray = new Float32Array(particlesCount * 3);
+        for(let i = 0; i < particlesCount * 3; i++) {
+            posArray[i] = (Math.random() - 0.5) * 30; // Spread espacial
+        }
+        particlesGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        const particlesMat = new THREE.PointsMaterial({
+            size: 0.05,
+            color: 0x32527B, // SGX Metallic Blue
+            transparent: true,
+            opacity: 0.8
+        });
+        const particlesMesh = new THREE.Points(particlesGeo, particlesMat);
+        particlesMesh.position.z = -5;
+        scene.add(particlesMesh);
+
+        // ==========================================
+        // 2. CARGA DEL MODELO 3D (Asset de Wix)
+        // ==========================================
+        const modelUrl = 'https://static.wixstatic.com/3d/fe81a7_8d5fdc7130e14daa8e101d7569c59b37.glb';
+        let mainObject;
+        let modelLoaded = false;
+
+        const loader = new THREE.GLTFLoader();
+        loader.load(
+            modelUrl,
+            (gltf) => {
+                mainObject = gltf.scene;
+                
+                // Auto-centrado y auto-escalado (Ojo Métrico)
+                const box = new THREE.Box3().setFromObject(mainObject);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                
+                // Reposicionar al centro del mundo
+                mainObject.position.x += (mainObject.position.x - center.x);
+                mainObject.position.y += (mainObject.position.y - center.y);
+                mainObject.position.z += (mainObject.position.z - center.z);
+                
+                // Escalar basado en el tamaño de la pantalla
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scale = 5 / maxDim; // Normaliza a tamaño 5 unidades
+                mainObject.scale.set(scale, scale, scale);
+
+                scene.add(mainObject);
+                modelLoaded = true;
+                checkInitStatus();
+            },
+            (xhr) => {
+                const percent = Math.round((xhr.loaded / xhr.total) * 100);
+                document.getElementById('sub-text').innerText = `Descargando Asset 3D: ${percent || '...'}%`;
+            },
+            (error) => {
+                console.error('Error cargando el GLB', error);
+                document.getElementById('loading-text').innerText = "ERROR DE CARGA";
+                document.getElementById('loading-text').style.color = "red";
+                document.getElementById('sub-text').innerText = "Revisa CORS o la URL del asset";
+            }
+        );
+
+        // ==========================================
+        // 3. LÓGICA DE TRACKING Y LERP (Filtro de Fricción)
+        // ==========================================
+        let targetX = 0;
+        let targetY = 0;
+        let currentX = 0;
+        let currentY = 0;
+        
+        const depthMultiplierX = 4.0; // Amplitud lateral
+        const depthMultiplierY = 3.0; // Amplitud vertical
+        const lerpFactor = 0.08; // Suavizado. Más bajo = más floaty, más alto = más jitter
+
+        function lerp(start, end, amt) {
+            return (1 - amt) * start + amt * end;
+        }
+
+        // ==========================================
+        // 4. MOTOR MEDIAPIPE (Sensor Óptico)
+        // ==========================================
+        const videoElement = document.getElementById('input_video');
+        let trackerLoaded = false;
+
+        const faceMesh = new FaceMesh({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+        }});
+
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: false,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        faceMesh.onResults((results) => {
+            if (!trackerLoaded) {
+                trackerLoaded = true;
+                checkInitStatus();
+            }
+
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const nose = results.multiFaceLandmarks[0][1]; // Landmark 1 = Punta de la nariz
+                
+                // Normalización de coordenadas. (0,0 es arriba a la izq en la imagen)
+                targetX = (nose.x - 0.5) * -2 * depthMultiplierX; 
+                targetY = -(nose.y - 0.5) * 2 * depthMultiplierY; 
+
+                document.getElementById('hud-data').innerText = `TARGET X: ${targetX.toFixed(2)} | TARGET Y: ${targetY.toFixed(2)}`;
+            }
+        });
+
+        const camera_utils = new Camera(videoElement, {
+            onFrame: async () => {
+                await faceMesh.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+
+        // Intentar iniciar cámara
+        camera_utils.start().catch(err => {
+            document.getElementById('loading-text').innerText = "ERROR DE SENSOR";
+            document.getElementById('sub-text').innerText = "Otorga permisos de cámara al iFrame";
+        });
+
+        // ==========================================
+        // 5. CONTROL DE ESTADOS
+        // ==========================================
+        function checkInitStatus() {
+            if (modelLoaded && trackerLoaded) {
+                document.getElementById('status-box').style.display = 'none';
+            } else if (modelLoaded) {
+                document.getElementById('sub-text').innerText = "Asset cargado. Buscando rostro...";
+            }
+        }
+
+        // ==========================================
+        // 6. RENDER LOOP
+        // ==========================================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Rotación pasiva lenta del objeto para darle vida si el usuario no se mueve
+            if (mainObject) {
+                mainObject.rotation.y += 0.002;
+            }
+
+            // Movimiento suave de las partículas de fondo
+            particlesMesh.rotation.y += 0.0005;
+
+            // Filtro LERP
+            currentX = lerp(currentX, targetX, lerpFactor);
+            currentY = lerp(currentY, targetY, lerpFactor);
+
+            // Aplicar traslación a la cámara
+            camera.position.x = currentX;
+            camera.position.y = currentY;
+            
+            // Magia del Parallax: Siempre mirar al centro del mundo (0,0,0)
+            camera.lookAt(scene.position);
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // ==========================================
+        // 7. RESPONSIVIDAD DEL SISTEMA
+        // ==========================================
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
