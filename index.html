@@ -125,11 +125,12 @@
         // ==========================================
         const SGXConfig = {
             // Parallax Engine
+            tipoParallax: 'Portal (Físico)', // Control Maestro de Dirección
             depthMultiplierX: 3.5,
             depthMultiplierY: 2.5,
             lerpFactor: 0.12,
-            invertX: true,
-            invertY: true,
+            invertX: true,  // Corrección nativa de cámara X
+            invertY: true,  // Corrección nativa de cámara Y
             
             // Spatial Boundary (Box)
             boxWidth: 10,
@@ -273,11 +274,12 @@
 
             // Carpeta: Sensor y Parallax
             const folderParallax = gui.addFolder('👁️ Parallax Engine');
+            folderParallax.add(SGXConfig, 'tipoParallax', ['Portal (Físico)', 'Espejo (Sigue Mirada)']).name('Modo de Interacción');
             folderParallax.add(SGXConfig, 'depthMultiplierX', 0, 10).name('Amplitud X');
             folderParallax.add(SGXConfig, 'depthMultiplierY', 0, 10).name('Amplitud Y');
             folderParallax.add(SGXConfig, 'lerpFactor', 0.01, 0.5).name('Fricción (Lerp)');
-            folderParallax.add(SGXConfig, 'invertX').name('Invertir Eje X');
-            folderParallax.add(SGXConfig, 'invertY').name('Invertir Eje Y');
+            folderParallax.add(SGXConfig, 'invertX').name('Invertir Eje X Base');
+            folderParallax.add(SGXConfig, 'invertY').name('Invertir Eje Y Base');
             folderParallax.add(SGXConfig, 'resetView').name('Resetear Vista');
 
             // Carpeta: Geometría de la Caja
@@ -308,6 +310,7 @@
         const hudData = document.getElementById('hud-data');
 
         let cameraUtilsInstance = null;
+        let isSystemInitialized = false; // Candado de memoria
 
         const faceMesh = new FaceMesh({locateFile: (file) => {
             return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
@@ -321,23 +324,27 @@
         });
 
         faceMesh.onResults((results) => {
-            // Quitar UI de carga cuando detecta el primer frame válido
-            if (uiLayer.style.display !== 'none') {
+            // Desbloqueo seguro: Quita UI de carga e instancia GUI una sola vez
+            if (!isSystemInitialized) {
+                isSystemInitialized = true;
                 uiLayer.style.opacity = '0';
                 setTimeout(() => { uiLayer.style.display = 'none'; }, 500);
                 hudData.style.display = 'block';
-                initGUI(); // Iniciar panel de control al tener tracking exitoso
+                initGUI(); 
             }
 
             if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
                 const nose = results.multiFaceLandmarks[0][1];
                 
-                // Normalización con aplicadores paramétricos del GUI
+                // Normalización con aplicadores paramétricos base
                 let dirX = SGXConfig.invertX ? -1 : 1;
                 let dirY = SGXConfig.invertY ? -1 : 1;
 
-                targetX = (nose.x - 0.5) * 2 * SGXConfig.depthMultiplierX * dirX; 
-                targetY = (nose.y - 0.5) * 2 * SGXConfig.depthMultiplierY * dirY; 
+                // Aplicador del Modo de Interacción
+                let modeMultiplier = SGXConfig.tipoParallax === 'Portal (Físico)' ? 1 : -1;
+
+                targetX = (nose.x - 0.5) * 2 * SGXConfig.depthMultiplierX * dirX * modeMultiplier; 
+                targetY = (nose.y - 0.5) * 2 * SGXConfig.depthMultiplierY * dirY * modeMultiplier; 
 
                 hudData.innerText = `TARGET X: ${targetX.toFixed(2)} | TARGET Y: ${targetY.toFixed(2)}`;
             }
