@@ -192,9 +192,14 @@
                 suavizado: 0.05,
                 invertirX: false,
                 invertirY: false,
+                
+                // Nuevos parámetros para la habitación
                 boxWidth: 20,
                 boxHeight: 12,
                 boxDepth: 15,
+                boxTextureUrl: 'https://static.wixstatic.com/media/fe81a7_c9b56435fd4b4430ba78aa2c64492965~mv2.jpeg',
+                textureScale: 0.25, // Controla qué tan grande/pequeño se repite el patrón
+                
                 camDistance: 15,
                 showGrids: true,
                 reloadModel: () => loadExternalModel(SGX.config.modelUrl),
@@ -222,17 +227,24 @@
         spot.position.set(0, 0, 5);
         scene.add(spot);
 
-        // --- NUEVO: ENTORNO HDRI PARA REFLEJOS METÁLICOS ---
-        // Esto le dará vida a los metales, vidrios y materiales PBR sin alterar tu caja gris
+        // --- ENTORNO HDRI PARA REFLEJOS METÁLICOS ---
         new RGBELoader().load('https://cdn.jsdelivr.net/npm/three@0.147.0/examples/textures/equirectangular/royal_esplanade_1k.hdr', (texture) => {
             texture.mapping = THREE.EquirectangularReflectionMapping;
-            scene.environment = texture; // Aplica los reflejos globales
+            scene.environment = texture; 
             console.log("Entorno HDRI cargado exitosamente.");
         });
 
-        // --- CONSTRUCCIÓN DEL ENTORNO (LA CAJA GRIS) ---
+        // --- CONSTRUCCIÓN DEL ENTORNO (LA CAJA TEXTURIZADA) ---
         let roomGroup = new THREE.Group();
         scene.add(roomGroup);
+
+        // Precargador de textura base para la caja
+        let boxTexLoader = new THREE.TextureLoader();
+        let currentTexUrl = SGX.config.boxTextureUrl;
+        let baseTex = boxTexLoader.load(currentTexUrl);
+        baseTex.wrapS = THREE.RepeatWrapping;
+        baseTex.wrapT = THREE.RepeatWrapping;
+        baseTex.encoding = THREE.sRGBEncoding;
 
         function buildEncasing() {
             while(roomGroup.children.length > 0) { 
@@ -245,15 +257,42 @@
             const h = SGX.config.boxHeight;
             const d = SGX.config.boxDepth;
 
-            // La caja Gris #333333
             const boxGeo = new THREE.BoxGeometry(w, h, d);
-            const boxMat = new THREE.MeshStandardMaterial({
-                color: 0x333333,
-                side: THREE.BackSide,
-                roughness: 0.7,
-                metalness: 0.1
-            });
-            const box = new THREE.Mesh(boxGeo, boxMat);
+
+            // Si el usuario cambia el link de la textura en el UI, la actualizamos
+            if (currentTexUrl !== SGX.config.boxTextureUrl) {
+                currentTexUrl = SGX.config.boxTextureUrl;
+                baseTex = boxTexLoader.load(currentTexUrl);
+                baseTex.wrapS = THREE.RepeatWrapping;
+                baseTex.wrapT = THREE.RepeatWrapping;
+                baseTex.encoding = THREE.sRGBEncoding;
+            }
+
+            // Función para crear materiales independientes por eje para que nunca se estiren
+            const tScale = SGX.config.textureScale;
+            const createWallMat = (repeatU, repeatV) => {
+                const tex = baseTex.clone(); // Clonamos la base para aplicar un repeticion diferente a cada pared
+                tex.repeat.set(repeatU * tScale, repeatV * tScale);
+                tex.needsUpdate = true;
+                
+                return new THREE.MeshStandardMaterial({
+                    map: tex,
+                    color: 0xaaaaaa, // Ligero tint para no quemar la imagen con las luces
+                    side: THREE.BackSide,
+                    roughness: 0.8,
+                    metalness: 0.1
+                });
+            };
+
+            // Creamos los materiales calculando su área real (Ancho x Alto)
+            const matX = createWallMat(d, h); // Paredes laterales (Profundidad x Altura)
+            const matY = createWallMat(w, d); // Techo y Suelo (Ancho x Profundidad)
+            const matZ = createWallMat(w, h); // Pared Frontal y Fondo (Ancho x Altura)
+
+            // Las 6 caras del cubo: Derecha, Izquierda, Arriba, Abajo, Frente, Atrás
+            const materials = [matX, matX, matY, matY, matZ, matZ];
+            
+            const box = new THREE.Mesh(boxGeo, materials);
             roomGroup.add(box);
 
             if (SGX.config.showGrids) {
@@ -289,22 +328,19 @@
 
         buildEncasing();
 
-        // --- CARGA DE MODELOS (USANDO CLASES IMPORTADAS) ---
+        // --- CARGA DE MODELOS ---
         const loader = new GLTFLoader();
         loader.setCrossOrigin('anonymous'); 
         
-        // 1. SOPORTE DRACO (Geometría)
         const dracoLoader = new DRACOLoader();
         dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/'); 
         loader.setDRACOLoader(dracoLoader);
 
-        // 2. SOPORTE KTX2 (Texturas)
         const ktx2Loader = new KTX2Loader();
         ktx2Loader.setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/libs/basis/');
         ktx2Loader.detectSupport(renderer);
         loader.setKTX2Loader(ktx2Loader);
 
-        // 3. SOPORTE MESHOPT (Compresión adicional)
         loader.setMeshoptDecoder(MeshoptDecoder);
 
         let currentModel = null;
@@ -315,7 +351,6 @@
             try {
                 let finalUrl = url;
                 
-                // Fetch a Blob Local para evitar CORS de Wix
                 if (url.includes('wixstatic.com') && !url.startsWith('blob:')) {
                     console.log("Descargando asset de Wix a memoria local...");
                     const response = await fetch(url, { mode: 'cors' });
@@ -327,7 +362,6 @@
                 loader.load(finalUrl, (gltf) => {
                     currentModel = gltf.scene;
                     
-                    // Centrar y auto-escalar
                     const box = new THREE.Box3().setFromObject(currentModel);
                     const size = box.getSize(new THREE.Vector3());
                     const center = box.getCenter(new THREE.Vector3());
@@ -349,7 +383,6 @@
             }
         }
 
-        // Listener para la subida de archivos locales
         document.getElementById('local-model-upload').addEventListener('change', function(event) {
             const file = event.target.files[0];
             if (file) {
@@ -372,7 +405,6 @@
                 currentModel.position.y = Math.sin(Date.now() * 0.001) * 0.5;
             }
 
-            // Aplicación de Inercia (Lerp)
             SGX.currentCamX += (SGX.targetCamX - SGX.currentCamX) * SGX.config.suavizado;
             SGX.currentCamY += (SGX.targetCamY - SGX.currentCamY) * SGX.config.suavizado;
 
@@ -404,6 +436,8 @@
             physFolder.add(SGX.config, 'invertirY').name('Invertir Eje Y');
 
             const roomFolder = gui.addFolder('📐 Espacio & Grids');
+            roomFolder.add(SGX.config, 'boxTextureUrl').name('Textura Fondo').onChange(buildEncasing);
+            roomFolder.add(SGX.config, 'textureScale', 0.05, 1.0).name('Escala de Textura').onChange(buildEncasing);
             roomFolder.add(SGX.config, 'boxWidth', 5, 50).name('Ancho').onChange(buildEncasing);
             roomFolder.add(SGX.config, 'boxHeight', 5, 30).name('Alto').onChange(buildEncasing);
             roomFolder.add(SGX.config, 'boxDepth', 5, 50).name('Profundidad').onChange(buildEncasing);
@@ -436,7 +470,6 @@
 
         // --- MEDIA PIPE IA ---
         const video = document.getElementById('webcam_feed');
-        // Usamos window.FaceMesh ya que se cargó globalmente en el <head>
         const faceMesh = new window.FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
         faceMesh.setOptions({ maxNumFaces: 1, minDetectionConfidence: 0.5 });
         faceMesh.onResults((res) => {
