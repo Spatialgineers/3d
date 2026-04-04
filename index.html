@@ -128,10 +128,8 @@
         }
     </style>
 
-    <!-- Librería de MediaPipe en formato global -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 
-    <!-- MIGRACIÓN A ES MODULES (ESTÁNDAR MODERNO) -->
     <script type="importmap">
     {
         "imports": {
@@ -144,7 +142,6 @@
 </head>
 <body>
 
-    <!-- Input oculto para subir modelos locales -->
     <input type="file" id="local-model-upload" accept=".glb,.gltf" style="display: none;">
 
     <video id="webcam_feed" autoplay playsinline muted></video>
@@ -166,7 +163,6 @@
         Y-POTENTIAL: <span id="hud-y">0.00</span>
     </div>
 
-    <!-- Script tipo módulo -->
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -193,17 +189,149 @@
                 invertirX: false,
                 invertirY: false,
                 
-                // Nuevos parámetros para la habitación
                 boxWidth: 20,
                 boxHeight: 12,
                 boxDepth: 15,
                 boxTextureUrl: 'https://static.wixstatic.com/media/fe81a7_177e64a6d0eb4445a0cf3e91c5be64d3~mv2.png',
-                textureScale: 0.25, // Controla qué tan grande/pequeño se repite el patrón
-                
+                textureScale: 0.25, 
                 camDistance: 15,
                 showGrids: true,
+                
                 reloadModel: () => loadExternalModel(SGX.config.modelUrl),
-                uploadLocal: () => document.getElementById('local-model-upload').click()
+                uploadLocal: () => document.getElementById('local-model-upload').click(),
+                
+                // --- NUEVA FUNCIÓN: EXPORTAR A EMBED HTML ---
+                exportHTML: () => {
+                    if (SGX.config.modelUrl.startsWith('blob:')) {
+                        alert('No se puede exportar con un modelo subido localmente. Por favor pega un Link (URL) público en el Asset Manager para que el Embed pueda descargarlo desde otros sitios web.');
+                        return;
+                    }
+                    
+                    const conf = JSON.stringify({
+                        modelUrl: SGX.config.modelUrl, autoRotate: SGX.config.autoRotate, modo: SGX.config.modo,
+                        amplitudX: SGX.config.amplitudX, amplitudY: SGX.config.amplitudY, suavizado: SGX.config.suavizado,
+                        invertirX: SGX.config.invertirX, invertirY: SGX.config.invertirY,
+                        boxWidth: SGX.config.boxWidth, boxHeight: SGX.config.boxHeight, boxDepth: SGX.config.boxDepth,
+                        boxTextureUrl: SGX.config.boxTextureUrl, textureScale: SGX.config.textureScale,
+                        camDistance: SGX.config.camDistance, showGrids: SGX.config.showGrids
+                    });
+
+                    const htmlTemplate = `<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGX - Embedded Portal</title>
+    <style>body{margin:0;overflow:hidden;background:#050505;touch-action:none;}canvas{display:block;}</style>
+    <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.147.0/examples/jsm/"}}<\/script>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+        import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+        import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+
+        const config = ${conf};
+        let tX = 0, tY = 0, cX = 0, cY = 0;
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        document.body.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        const sun = new THREE.DirectionalLight(0xffffff, 1); sun.position.set(5, 10, 7); scene.add(sun);
+        const spot = new THREE.PointLight(0xFDCC0D, 2, 40); spot.position.set(0, 0, 5); scene.add(spot);
+
+        new RGBELoader().load('https://cdn.jsdelivr.net/npm/three@0.147.0/examples/textures/equirectangular/royal_esplanade_1k.hdr', (t) => {
+            t.mapping = THREE.EquirectangularReflectionMapping; scene.environment = t; 
+        });
+
+        const room = new THREE.Group(); scene.add(room);
+        const texLoader = new THREE.TextureLoader();
+        const bTex = texLoader.load(config.boxTextureUrl);
+        bTex.wrapS = bTex.wrapT = THREE.RepeatWrapping; bTex.encoding = THREE.sRGBEncoding;
+
+        const w = config.boxWidth, h = config.boxHeight, d = config.boxDepth, ts = config.textureScale;
+        const cMat = (u, v) => {
+            const t = bTex.clone(); t.repeat.set(u * ts, v * ts); t.needsUpdate = true;
+            return new THREE.MeshStandardMaterial({ map: t, color: 0xaaaaaa, side: THREE.BackSide, roughness: 0.8, metalness: 0.1 });
+        };
+        room.add(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [cMat(d, h), cMat(d, h), cMat(w, d), cMat(w, d), cMat(w, h), cMat(w, h)]));
+
+        if (config.showGrids) {
+            const div = 20;
+            const gt = new THREE.GridHelper(Math.max(w, d), div, 0xFDCC0D, 0x222222); gt.position.y = h/2 - 0.01; room.add(gt);
+            const gb = new THREE.GridHelper(Math.max(w, d), div, 0xFDCC0D, 0x222222); gb.position.y = -h/2 + 0.01; room.add(gb);
+            const gl = new THREE.GridHelper(Math.max(h, d), div, 0x0070FF, 0x111111); gl.position.x = -w/2 + 0.01; gl.rotation.z = Math.PI/2; room.add(gl);
+            const gr = new THREE.GridHelper(Math.max(h, d), div, 0x0070FF, 0x111111); gr.position.x = w/2 - 0.01; gr.rotation.z = Math.PI/2; room.add(gr);
+            const gk = new THREE.GridHelper(Math.max(w, h), div, 0x0070FF, 0x111111); gk.position.z = -d/2 + 0.01; gk.rotation.x = Math.PI/2; room.add(gk);
+        }
+
+        const loader = new GLTFLoader(); loader.setCrossOrigin('anonymous');
+        const draco = new DRACOLoader(); draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/'); loader.setDRACOLoader(draco);
+        const ktx = new KTX2Loader(); ktx.setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/libs/basis/'); ktx.detectSupport(renderer); loader.setKTX2Loader(ktx);
+        loader.setMeshoptDecoder(MeshoptDecoder);
+
+        let mod = null;
+        async function load(url) {
+            let u = url;
+            if (url.includes('wixstatic.com') && !url.startsWith('blob:')) {
+                const res = await fetch(url, { mode: 'cors' }); u = URL.createObjectURL(await res.blob());
+            }
+            loader.load(u, (gltf) => {
+                mod = gltf.scene;
+                const b = new THREE.Box3().setFromObject(mod), sz = b.getSize(new THREE.Vector3()), c = b.getCenter(new THREE.Vector3());
+                mod.position.sub(c);
+                const s = (config.boxHeight * 0.6) / Math.max(sz.x, sz.y, sz.z); mod.scale.set(s, s, s);
+                scene.add(mod);
+            });
+        }
+        load(config.modelUrl);
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (mod) {
+                if (config.autoRotate) mod.rotation.y += 0.005;
+                mod.position.y = Math.sin(Date.now() * 0.001) * 0.5;
+            }
+            cX += (tX - cX) * config.suavizado; cY += (tY - cY) * config.suavizado;
+            camera.position.set(cX, cY, config.camDistance); camera.lookAt(0, 0, 0);
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('pointermove', (e) => {
+            const nx = (e.clientX / window.innerWidth - 0.5) * 2, ny = (e.clientY / window.innerHeight - 0.5) * 2;
+            const mult = config.modo === 'Portal (Físico)' ? -1 : 1;
+            tX = nx * config.amplitudX * (config.invertirX ? -1 : 1) * mult;
+            tY = -ny * config.amplitudY * (config.invertirY ? -1 : 1) * mult;
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    <\/script>
+</body>
+</html>`;
+
+                    // Forzar la descarga del archivo generado
+                    const blob = new Blob([htmlTemplate], { type: 'text/html' });
+                    const downloadUrl = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = downloadUrl;
+                    link.download = 'SGX-Embed-Export.html';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(downloadUrl);
+                }
             }
         };
 
@@ -259,7 +387,6 @@
 
             const boxGeo = new THREE.BoxGeometry(w, h, d);
 
-            // Si el usuario cambia el link de la textura en el UI, la actualizamos
             if (currentTexUrl !== SGX.config.boxTextureUrl) {
                 currentTexUrl = SGX.config.boxTextureUrl;
                 baseTex = boxTexLoader.load(currentTexUrl);
@@ -268,28 +395,21 @@
                 baseTex.encoding = THREE.sRGBEncoding;
             }
 
-            // Función para crear materiales independientes por eje para que nunca se estiren
             const tScale = SGX.config.textureScale;
             const createWallMat = (repeatU, repeatV) => {
-                const tex = baseTex.clone(); // Clonamos la base para aplicar un repeticion diferente a cada pared
+                const tex = baseTex.clone(); 
                 tex.repeat.set(repeatU * tScale, repeatV * tScale);
                 tex.needsUpdate = true;
                 
                 return new THREE.MeshStandardMaterial({
-                    map: tex,
-                    color: 0xaaaaaa, // Ligero tint para no quemar la imagen con las luces
-                    side: THREE.BackSide,
-                    roughness: 0.8,
-                    metalness: 0.1
+                    map: tex, color: 0xaaaaaa, side: THREE.BackSide, roughness: 0.8, metalness: 0.1
                 });
             };
 
-            // Creamos los materiales calculando su área real (Ancho x Alto)
-            const matX = createWallMat(d, h); // Paredes laterales (Profundidad x Altura)
-            const matY = createWallMat(w, d); // Techo y Suelo (Ancho x Profundidad)
-            const matZ = createWallMat(w, h); // Pared Frontal y Fondo (Ancho x Altura)
+            const matX = createWallMat(d, h); 
+            const matY = createWallMat(w, d); 
+            const matZ = createWallMat(w, h); 
 
-            // Las 6 caras del cubo: Derecha, Izquierda, Arriba, Abajo, Frente, Atrás
             const materials = [matX, matX, matY, matY, matZ, matZ];
             
             const box = new THREE.Mesh(boxGeo, materials);
@@ -298,31 +418,20 @@
             if (SGX.config.showGrids) {
                 const divisions = 20;
                 
-                // Grids Arriba y Abajo (AMARILLO)
                 const gridTop = new THREE.GridHelper(Math.max(w, d), divisions, 0xFDCC0D, 0x222222);
-                gridTop.position.y = h / 2 - 0.01;
-                roomGroup.add(gridTop);
+                gridTop.position.y = h / 2 - 0.01; roomGroup.add(gridTop);
 
                 const gridBottom = new THREE.GridHelper(Math.max(w, d), divisions, 0xFDCC0D, 0x222222);
-                gridBottom.position.y = -h / 2 + 0.01;
-                roomGroup.add(gridBottom);
+                gridBottom.position.y = -h / 2 + 0.01; roomGroup.add(gridBottom);
 
-                // Grids Lados (AZUL)
                 const gridLeft = new THREE.GridHelper(Math.max(h, d), divisions, 0x0070FF, 0x111111);
-                gridLeft.position.x = -w / 2 + 0.01;
-                gridLeft.rotation.z = Math.PI / 2;
-                roomGroup.add(gridLeft);
+                gridLeft.position.x = -w / 2 + 0.01; gridLeft.rotation.z = Math.PI / 2; roomGroup.add(gridLeft);
 
                 const gridRight = new THREE.GridHelper(Math.max(h, d), divisions, 0x0070FF, 0x111111);
-                gridRight.position.x = w / 2 - 0.01;
-                gridRight.rotation.z = Math.PI / 2;
-                roomGroup.add(gridRight);
+                gridRight.position.x = w / 2 - 0.01; gridRight.rotation.z = Math.PI / 2; roomGroup.add(gridRight);
 
-                // Grid Fondo (AZUL)
                 const gridBack = new THREE.GridHelper(Math.max(w, h), divisions, 0x0070FF, 0x111111);
-                gridBack.position.z = -d / 2 + 0.01;
-                gridBack.rotation.x = Math.PI / 2;
-                roomGroup.add(gridBack);
+                gridBack.position.z = -d / 2 + 0.01; gridBack.rotation.x = Math.PI / 2; roomGroup.add(gridBack);
             }
         }
 
@@ -421,6 +530,9 @@
         function initGUI() {
             const gui = new GUI({ title: '⚙️ SGX ARCHITECT V3' });
             
+            const exportFolder = gui.addFolder('💾 Exportar App');
+            exportFolder.add(SGX.config, 'exportHTML').name('Exportar a Embed (HTML)');
+
             const modelFolder = gui.addFolder('📦 Asset Manager');
             modelFolder.add(SGX.config, 'modelUrl').name('Link GLB/GLTF');
             modelFolder.add(SGX.config, 'reloadModel').name('Actualizar Link');
@@ -521,3 +633,5 @@
     </script>
 </body>
 </html>
+
+
